@@ -62,6 +62,9 @@ func NewAddModel(store *note.NotesStore) *AddModel {
 	content.Focus()
 
 	content.WithKeyMap(&huh.KeyMap{
+		Text: huh.TextKeyMap{
+			NewLine: keymap.NewLine,
+		},
 		Quit: key.NewBinding(
 			key.WithKeys("ctrl+c", "esc"),
 			key.WithHelp("ctrl+c/esc", "Quit"),
@@ -222,6 +225,7 @@ func (m AddModel) getView() string {
 	switch m.view {
 	case addContent:
 		m.help.Keys.ShortHelpBindings = []key.Binding{
+			keymap.NewLine,
 			keymap.Editor,
 			keymap.Continue,
 			keymap.QuitForm,

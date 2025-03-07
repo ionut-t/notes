@@ -31,6 +31,11 @@ var Select = key.NewBinding(
 	key.WithHelp("enter", "view note"),
 )
 
+var NewLine = key.NewBinding(
+	key.WithKeys("enter"),
+	key.WithHelp("enter", "new line"),
+)
+
 var Back = key.NewBinding(
 	key.WithKeys("esc"),
 	key.WithHelp("esc", "back"),
