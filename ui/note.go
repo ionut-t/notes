@@ -46,6 +46,7 @@ func NewNoteModel(note note.Note, width, height int) NoteModel {
 		keymap.QuickEditor,
 		keymap.Rename,
 		keymap.Copy,
+		keymap.CopyCodeBlock,
 		keymap.Quit,
 		keymap.Help,
 	}

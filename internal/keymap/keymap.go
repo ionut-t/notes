@@ -103,7 +103,15 @@ var Delete = key.NewBinding(
 
 var Copy = key.NewBinding(
 	key.WithKeys("c"),
-	key.WithHelp("c", "copy note"),
+	key.WithHelp("c", "copy note to clipboard"),
+)
+
+var CopyCodeBlock = key.NewBinding(
+	key.WithKeys(":"),
+	key.WithHelp(":co", `copy code block lines to clipboard 
+		 				 e.g.: co 1 1 -> copies the first line of the first code block
+		 				 co 1 0 -> copies the entire first code block`,
+	),
 )
 
 type Model struct {

@@ -127,14 +127,29 @@ func (m Model) renderFullHelpView() string {
 	for _, binding := range enabledBindings {
 		keyText := binding.Help().Key
 		renderedKey := styles.Info.Background(bgColour).Render(keyText)
-		renderedDescription := styles.Overlay1.Background(bgColour).Render(binding.Help().Desc)
 		currentWidth := lipgloss.Width(renderedKey)
 		padding := bg.Render(strings.Repeat(" ", maxKeyWidth-currentWidth+2))
+
+		totalIndentation := 2 + lipgloss.Width(renderedKey) + maxKeyWidth - currentWidth + 2
+
+		desc := strings.Split(binding.Help().Desc, "\n")
+
+		var renderedDescription strings.Builder
+		for i, line := range desc {
+			renderedLine := styles.Overlay1.Background(bgColour).Render(strings.TrimSpace(line))
+
+			if i != 0 {
+				indentPadding := bg.Render(strings.Repeat(" ", totalIndentation))
+				renderedDescription.WriteString("\n" + indentPadding)
+			}
+
+			renderedDescription.WriteString(renderedLine)
+		}
 
 		sb.WriteString(fmt.Sprintf("• %s%s%s\n",
 			renderedKey,
 			padding,
-			renderedDescription,
+			renderedDescription.String(),
 		))
 	}
 

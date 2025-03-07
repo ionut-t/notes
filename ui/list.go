@@ -584,7 +584,10 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 	case "esc":
 		m.cmdMode = false
 		empty := ""
+		m.error = nil
 		m.cmdInput.Value(&empty)
+		return m, m.dispatchWindowSizeMsg()
+
 	case "enter":
 		cmdValue := m.cmdInput.GetValue().(string)
 
@@ -619,7 +622,10 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 			m.error = err
 			m.noteView.error = err
 
-			return m, dispatchClearMsg()
+			return m, tea.Batch(
+				m.dispatchWindowSizeMsg(),
+				dispatchClearMsg(),
+			)
 		}
 
 		m.successMessage = "Note lines copied to clipboard"
@@ -629,7 +635,10 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 		empty := ""
 		m.cmdInput.Value(&empty)
 
-		return m, dispatchClearMsg()
+		return m, tea.Batch(
+			m.dispatchWindowSizeMsg(),
+			dispatchClearMsg(),
+		)
 	}
 
 	cmdModel, cmd := m.cmdInput.Update(msg)
