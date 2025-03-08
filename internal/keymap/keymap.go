@@ -108,10 +108,21 @@ var Copy = key.NewBinding(
 
 var CopyCodeBlock = key.NewBinding(
 	key.WithKeys(":"),
-	key.WithHelp(":co", `copy code block lines to clipboard 
-		 				 e.g.: co 1 1 -> copies the first line of the first code block
-		 				 co 1 0 -> copies the entire first code block`,
+	key.WithHelp(":co", `copy lines to clipboard
+						 Examples:
+						 co 1 (copy line 1)
+		 				 co 1 2 (copy lines 1 to 2)
+		 				 co 1 1 (copy line 1)
+						 co 20 > 2 (copy lines 20 to 22)
+						 co 20 < 2 (copy lines 18 to 20)
+						 co 20 > -1 (copy lines 20 to the end)
+						 co 20 < -1 (copy lines 1 to 20)`,
 	),
+)
+
+var VLine = key.NewBinding(
+	key.WithKeys("V"),
+	key.WithHelp("V", "toggle line numbers"),
 )
 
 type Model struct {

@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"slices"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -16,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
+	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
@@ -179,6 +179,7 @@ func (m ListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case ":":
 			m.cmdMode = true
+			m.noteView.setHeight(m.height - lipgloss.Height(m.cmdInput.View()))
 		}
 	}
 
@@ -554,11 +555,11 @@ func (m ListModel) activateRenameMode() (ListModel, tea.Cmd) {
 func (m ListModel) copyNoteContent() (ListModel, tea.Cmd) {
 	err := m.store.CopyContent(m.selectedNote.Content)
 	if err != nil {
-		fmt.Println("Error copying note content:", err)
+		fmt.Println("Error copying note:", err)
 		os.Exit(1)
 	}
 
-	m.successMessage = "Note content copied to clipboard"
+	m.successMessage = "Note copied to clipboard"
 	m.noteView.successMessage = m.successMessage
 
 	return m, dispatchClearMsg()
@@ -590,33 +591,17 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 
 	case "enter":
 		cmdValue := m.cmdInput.GetValue().(string)
+		cmdValue = strings.TrimSpace(cmdValue)
+
+		if cmdValue == "q" {
+			return m, tea.Quit
+		}
 
 		if cmdValue == "" {
 			return m, nil
 		}
 
-		re, err := regexp.Compile(`^co\s+(\d+)\s+(\d+)$`)
-
-		if err != nil {
-			return m, nil
-		}
-
-		matches := re.FindStringSubmatch(cmdValue)
-
-		var start, end int
-		var startErr, endErr error
-		if len(matches) == 3 {
-			start, startErr = strconv.Atoi(matches[1])
-			end, endErr = strconv.Atoi(matches[2])
-
-			if startErr != nil || endErr != nil {
-				return m, nil
-			}
-		} else {
-			return m, nil
-		}
-
-		err = m.store.CopyFromCodeBlock(m.selectedNote.Content, start, end)
+		start, end, err := note.ParseCopyLinesCommand(cmdValue)
 
 		if err != nil {
 			m.error = err
@@ -628,7 +613,23 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 			)
 		}
 
-		m.successMessage = "Note lines copied to clipboard"
+		copiedLines, err := m.store.CopyLines(m.selectedNote.Content, start, end)
+
+		if err != nil {
+			m.error = err
+			m.noteView.error = err
+
+			return m, tea.Batch(
+				m.dispatchWindowSizeMsg(),
+				dispatchClearMsg(),
+			)
+		}
+
+		m.successMessage = fmt.Sprintf(
+			"Copied %d %s to clipboard",
+			copiedLines,
+			utils.Ternary(copiedLines == 1, "line", "lines"),
+		)
 		m.noteView.successMessage = m.successMessage
 
 		m.cmdMode = false

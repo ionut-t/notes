@@ -8,13 +8,16 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
+	"github.com/ionut-t/notes/internal/utils"
+	"github.com/ionut-t/notes/markdown"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
+
+var markdownPadding = lipgloss.NewStyle().Padding(0, 4).Render
 
 type NoteModel struct {
 	note           note.Note
@@ -23,16 +26,18 @@ type NoteModel struct {
 	help           help.Model
 	successMessage string
 	error          error
+	markdown       markdown.Model
+	vLine          bool
 }
 
 func NewNoteModel(note note.Note, width, height int) NoteModel {
 	vp := viewport.New(width, height-1)
 
-	content, err := glamour.Render(note.Content, "dark")
-	if err != nil {
-		content = "Error rendering content"
-	}
-	vp.SetContent(content)
+	md := markdown.New(note.Content, width)
+	md.SetLineNumbers(false)
+	content := md.Render()
+
+	vp.SetContent(markdownPadding(content))
 
 	helpMenu := help.New()
 
@@ -45,6 +50,7 @@ func NewNoteModel(note note.Note, width, height int) NoteModel {
 		keymap.Down,
 		keymap.QuickEditor,
 		keymap.Rename,
+		keymap.VLine,
 		keymap.Copy,
 		keymap.CopyCodeBlock,
 		keymap.Quit,
@@ -59,6 +65,7 @@ func NewNoteModel(note note.Note, width, height int) NoteModel {
 		width:    width,
 		height:   height,
 		help:     helpMenu,
+		markdown: md,
 	}
 }
 
@@ -90,6 +97,19 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		keyMsg := tea.KeyMsg(msg).String()
+
+		switch keyMsg {
+		case "V":
+			m.vLine = !m.vLine
+			m.markdown.SetLineNumbers(m.vLine)
+			content := utils.Ternary(m.vLine, m.markdown.Render(), markdownPadding(m.markdown.Render()))
+			m.viewport.SetContent(content)
+		}
+	}
+
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
@@ -111,25 +131,49 @@ func (m NoteModel) statusBarView() string {
 		return styles.Error.Background(bg).Width(m.width).Padding(0, 1).Render(m.error.Error())
 	}
 
-	scroll := styles.Surface0.Padding(0, 1).Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	separator := styles.Surface0.Render(" | ")
 
 	name := styles.Primary.Background(bg).Render(m.note.Name)
 
 	modifiedDate := styles.Accent.Background(bg).Render("Last Modified " + m.note.CreatedAt.Format("02/01/2006 15:04"))
 
 	noteInfo := styles.Surface0.Padding(0, 1).Render(
-		name + styles.Surface0.Render(" | ") + modifiedDate,
+		name + separator + modifiedDate,
 	)
 
 	lineNumbers := styles.Info.Background(bg).Render(strconv.Itoa(m.getLineNumbers()))
 
-	helpText := styles.Info.Background(bg).Padding(0, 1).Render("? Help")
-	displayedInfoWidth := m.viewport.Width - lipgloss.Width(noteInfo) - lipgloss.Width(scroll) - lipgloss.Width(lineNumbers) - lipgloss.Width(helpText)
+	vLineStyles := utils.Ternary(m.vLine, styles.Accent, styles.Overlay0)
+
+	vLineText := vLineStyles.Background(bg).Render("V-Line")
+
+	scroll := styles.Surface0.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+
+	helpText := styles.Info.Background(bg).PaddingRight(1).Render("? Help")
+
+	displayedInfoWidth := m.viewport.Width -
+		lipgloss.Width(noteInfo) -
+		lipgloss.Width(scroll) -
+		lipgloss.Width(vLineText) -
+		lipgloss.Width(lineNumbers) -
+		lipgloss.Width(helpText) -
+		3*lipgloss.Width(separator)
 
 	spaces := styles.Surface0.Render(strings.Repeat(" ", max(0, displayedInfoWidth)))
 
 	return styles.Surface0.Width(m.width).Padding(0, 0).Render(
-		lipgloss.JoinHorizontal(lipgloss.Right, noteInfo, spaces, lineNumbers, scroll, helpText),
+		lipgloss.JoinHorizontal(
+			lipgloss.Right,
+			noteInfo,
+			spaces,
+			vLineText,
+			separator,
+			lineNumbers,
+			separator,
+			scroll,
+			separator,
+			helpText,
+		),
 	)
 }
 
@@ -139,10 +183,11 @@ func (m NoteModel) getLineNumbers() int {
 
 func (m *NoteModel) setNote(note note.Note) {
 	m.note = note
-	content, err := glamour.Render(note.Content, "dark")
-	if err != nil {
-		content = "Error rendering content"
-	}
+	md := markdown.New(note.Content, m.width)
+	m.markdown = md
+	md.SetLineNumbers(m.vLine)
+	content := utils.Ternary(m.vLine, md.Render(), markdownPadding(md.Render()))
+
 	m.viewport.SetContent(content)
 }
 

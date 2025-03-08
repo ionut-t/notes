@@ -3,8 +3,10 @@ package note
 import (
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -297,71 +299,124 @@ func (s *NotesStore) CopyContent(content string) error {
 	return nil
 }
 
-func (s *NotesStore) CopyLines(content string, start, end int) error {
+func (s *NotesStore) CopyLines(content string, start, end int) (int, error) {
 	lines := strings.Split(content, "\n")
 
+	if end == math.MaxInt32 {
+		end = len(lines)
+	}
+
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	start--
+	end--
+
 	if len(lines) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	if start < 0 || start >= len(lines) {
-		return fmt.Errorf("invalid start line number")
+		return 0, fmt.Errorf("invalid start line number %d", start+1)
 	}
 
 	if end < 0 || end >= len(lines) {
-		return fmt.Errorf("invalid end line number")
+		return 0, fmt.Errorf("invalid end line number %d", end+1)
+	}
+
+	if start > end {
+		return 0, fmt.Errorf("invalid range: start line (%d) is greater than end line (%d)", start+1, end+1)
 	}
 
 	content = strings.Join(lines[start:end+1], "\n")
 
 	if err := clipboard.WriteAll(content); err != nil {
-		return fmt.Errorf("failed to copy note content: %w", err)
+		return 0, fmt.Errorf("failed to copy note content: %w", err)
 	}
 
-	return nil
-}
-func (s *NotesStore) CopyFromCodeBlock(content string, codeBlockNo, codeLine int) error {
-	lines := strings.Split(content, "\n")
-	codeBlockCount := 0
-	startIndex := -1
-	endIndex := -1
+	copiedLines := end - start + 1
 
-	for i, line := range lines {
-		if strings.HasPrefix(line, "```") {
-			codeBlockCount++
-			if codeBlockCount == codeBlockNo {
-				startIndex = i + 1
-			} else if startIndex != -1 {
-				endIndex = i
-				break
+	return copiedLines, nil
+}
+
+// Handles various formats:
+// - co 1 2 (copy lines 1 to 2)
+// - co 1 1 (copy line 1)
+// - co 1 (copy line 1)
+// - co 20 > 2 (copy lines 20 to 22)
+// - co 20 < 2 (copy lines 18 to 20)
+// - co 20 > -1 (copy lines 20 to the end)
+// - co 20 < -1 (copy lines 1 to 20)
+func ParseCopyLinesCommand(cmd string) (int, int, error) {
+	// Define the regexes for different command patterns
+	copyBasicRe := regexp.MustCompile(`^co\s+(\d+)(?:\s+(\d+))?$`)
+	copyRelativeRe := regexp.MustCompile(`^co\s+(\d+)\s+([<>])\s+(-?\d+)$`)
+
+	// Check if it's a basic pattern (co NUM [NUM])
+	if matches := copyBasicRe.FindStringSubmatch(cmd); len(matches) >= 2 {
+		start, startErr := strconv.Atoi(matches[1])
+		if startErr != nil {
+			return 0, 0, fmt.Errorf("invalid start line: %v", startErr)
+		}
+
+		// If only one number provided, start and end are the same
+		end := start
+		if len(matches) == 3 && matches[2] != "" {
+			var endErr error
+			end, endErr = strconv.Atoi(matches[2])
+			if endErr != nil {
+				return 0, 0, fmt.Errorf("invalid end line: %v", endErr)
 			}
 		}
+
+		return start, end, nil
 	}
 
-	if startIndex == -1 {
-		return fmt.Errorf("code block %d not found", codeBlockNo)
-	}
-
-	if codeLine == 0 {
-		if endIndex == -1 {
-			endIndex = len(lines)
+	// Check if it's a relative pattern (co NUM < NUM or co NUM > NUM)
+	if matches := copyRelativeRe.FindStringSubmatch(cmd); len(matches) == 4 {
+		base, baseErr := strconv.Atoi(matches[1])
+		if baseErr != nil {
+			return 0, 0, fmt.Errorf("invalid base line: %v", baseErr)
 		}
-		codeBlockContent := strings.Join(lines[startIndex:endIndex], "\n")
-		if err := clipboard.WriteAll(codeBlockContent); err != nil {
-			return fmt.Errorf("failed to copy code block content: %w", err)
+
+		op := matches[2] // < or >
+
+		offset, offsetErr := strconv.Atoi(matches[3])
+		if offsetErr != nil {
+			return 0, 0, fmt.Errorf("invalid offset: %v", offsetErr)
 		}
-		return nil
+
+		var start, end int
+
+		if op == ">" {
+			// co 20 > 2 means lines 20 to (20+2)
+			start = base
+
+			if offset == -1 {
+				// Special case: co 20 > -1 means copy from line 20 to the end
+				// Instead of using -1, we need to calculate the actual end line
+				// This will be handled in the calling code by setting end to last line
+				end = math.MaxInt32 // Very large number to be clamped by caller
+			} else {
+				end = base + offset
+			}
+		} else { // op == "<"
+			// co 20 < 2 means lines (20-2) to 20
+
+			if offset == -1 {
+				// Special case: co 20 < -1 means copy from line 1 to line 20
+				start = 1
+			} else {
+				start = base - offset
+				start = max(1, start) // Ensure start is at least 1
+			}
+
+			end = base
+		}
+
+		return start, end, nil
 	}
 
-	if codeLine < 1 || startIndex+codeLine-1 >= len(lines) || strings.HasPrefix(lines[startIndex+codeLine-1], "```") {
-		return fmt.Errorf("code line %d not found in code block %d", codeLine, codeBlockNo)
-	}
-
-	codeLineContent := lines[startIndex+codeLine-1]
-
-	if err := clipboard.WriteAll(codeLineContent); err != nil {
-		return fmt.Errorf("failed to copy code line content: %w", err)
-	}
-
-	return nil
+	return 0, 0, fmt.Errorf("invalid command format: %s", cmd)
 }
