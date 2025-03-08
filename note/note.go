@@ -87,7 +87,7 @@ func (s *NotesStore) saveNote(note Note) error {
 	path := filepath.Join(s.Dir, s.generateUniqueFileName(note.Name)+".md")
 
 	// Create the note content
-	content := note.Content
+	content := strings.Trim(note.Content, "\n")
 
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write note file: %w", err)
