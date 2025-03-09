@@ -10,12 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func listCmd(store *note.NotesStore) *cobra.Command {
+func listCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all notes",
 		Long:  `List all notes in your collection.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			store := note.NewNotesStore()
 			runListUI(store)
 		},
 	}

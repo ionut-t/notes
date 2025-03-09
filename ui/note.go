@@ -30,14 +30,15 @@ type NoteModel struct {
 	vLine          bool
 }
 
-func NewNoteModel(note note.Note, width, height int) NoteModel {
+func NewNoteModel(note note.Note, vLine bool, width, height int) NoteModel {
 	vp := viewport.New(width, height-1)
 
 	md := markdown.New(note.Content, width)
-	md.SetLineNumbers(false)
-	content := md.Render()
 
-	vp.SetContent(markdownPadding(content))
+	md.SetLineNumbers(vLine)
+
+	content := utils.Ternary(vLine, md.Render(), markdownPadding(md.Render()))
+	vp.SetContent(content)
 
 	helpMenu := help.New()
 
@@ -66,6 +67,7 @@ func NewNoteModel(note note.Note, width, height int) NoteModel {
 		height:   height,
 		help:     helpMenu,
 		markdown: md,
+		vLine:    vLine,
 	}
 }
 

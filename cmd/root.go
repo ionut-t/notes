@@ -3,52 +3,68 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/ionut-t/notes/note"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
+
+var cfgFile string
 
 var rootCmd = &cobra.Command{
 	Use:   "notes",
 	Short: "A simple notes manager",
 	Long:  `A simple CLI tool to manage your notes with add, list, view, edit, and delete functionality.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		store, err := note.NewNotesStore("")
-		if err != nil {
-			fmt.Printf("Error initializing notes store: %v\n", err)
-			os.Exit(1)
-		}
-
+		store := note.NewNotesStore()
 		runListUI(store)
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	store, err := note.NewNotesStore("")
-	if err != nil {
-		fmt.Printf("Error initializing notes store: %v\n", err)
-		os.Exit(1)
-	}
+	rootCmd.AddCommand(configCmd())
+	rootCmd.AddCommand(newAddCmd())
+	rootCmd.AddCommand(listCmd())
 
-	rootCmd.AddCommand(newAddCmd(store))
-	rootCmd.AddCommand(listCmd(store))
-
-	err = rootCmd.Execute()
+	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)
 	}
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
+	cobra.OnInitialize(initConfig)
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.notes.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "set-config", "", "config file (default is $HOME/.notes/.config.toml)")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func initConfig() {
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		dir := filepath.Join(home, ".notes")
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			os.Mkdir(dir, 0755)
+		}
+
+		viper.AddConfigPath(dir)
+		viper.SetConfigType("toml")
+		viper.SetConfigName(".config")
+	}
+
+	// Read in environment variables that match
+	viper.AutomaticEnv()
+
+	// If a config file is found, read it in
+	// Silently continue if it doesn't exist
+	_ = viper.ReadInConfig()
 }

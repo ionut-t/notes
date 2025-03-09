@@ -1,6 +1,11 @@
 # Notes CLI
 
-A simple notes manager written in Go.
+A simple, lightweight command-line notes manager written in Go.
+
+## Features
+
+- Create, view, and manage markdown notes from your terminal
+- Customizable storage location and editor
 
 ## Installation
 
@@ -16,15 +21,46 @@ go install github.com/ionut-t/notes@latest
 # Create a new note
 notes add
 
-# Launch the notes app (shows list of notes)
-notes # or notes list
+# Launch the notes manager UI
+notes
+
+# Configure settings
+notes config [flags]
+```
+
+### Configuration Options
+
+```bash
+# Open configuration file in your default editor
+notes config
+
+# Set custom editor
+notes config --editor nvim
+
+# Set custom storage location
+notes config --storage ~/Documents/my-notes
+
+# Show line numbers in markdown preview by default
+notes config --v-line
 ```
 
 ## Configuration
 
-Notes are stored in `~/.notes` directory by default. Each note is saved as a separate Markdown file.
+Notes CLI stores its configuration in `~/.notes/.config.toml`. You can customize:
 
-The application uses the editor specified in your `EDITOR` environment variable. If not set, it defaults to `vim`.
+| Setting   | Description                                      | Default                        |
+| --------- | ------------------------------------------------ | ------------------------------ |
+| `editor`  | Text editor to use                               | Environment `$EDITOR` or `vim` |
+| `storage` | Directory to store notes                         | `~/.notes`                     |
+| `v_line`  | Show line numbers in markdown preview by default | `false`                        |
+
+## Directory Structure
+
+```
+~/.notes/              # Default storage location
+├── .config.toml       # Configuration file
+└── *.md               # Your markdown notes
+```
 
 ## License
 

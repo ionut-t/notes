@@ -10,12 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newAddCmd(store *note.NotesStore) *cobra.Command {
+func newAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new note",
 		Long:  `Add a new note to your collection.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			store := note.NewNotesStore()
 			runAddUI(store)
 		},
 	}

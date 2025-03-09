@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -414,7 +415,11 @@ func (m ListModel) executeNoteDeletion(msg deleteNoteMsg) (ListModel, tea.Cmd) {
 			return n.Name == noteName
 		})
 		m.notes = notes
-		m.selectedNote = m.notes[selected]
+
+		if len(notes) > 0 {
+			m.selectedNote = m.notes[selected]
+		}
+
 		m.successMessage = "Note successfully deleted"
 	}
 
@@ -508,7 +513,8 @@ func (m *ListModel) handleSelection() {
 	note := m.notes[selected]
 
 	m.selectedNote = note
-	m.noteView = NewNoteModel(note, m.width, m.height)
+	vLineEnabled := m.store.GetVLineEnabledByDefault()
+	m.noteView = NewNoteModel(note, vLineEnabled, m.width, m.height)
 
 	m.view = noteView
 }
@@ -531,6 +537,10 @@ func (m *ListModel) triggerNoteEditor() (bool, tea.Cmd) {
 }
 
 func (m ListModel) activateRenameMode() (ListModel, tea.Cmd) {
+	if len(m.list.Items()) == 0 {
+		return m, nil
+	}
+
 	m.renameMode = true
 	m.help.FullView = false
 	m.noteView.help.FullView = false
@@ -566,7 +576,7 @@ func (m ListModel) copyNoteContent() (ListModel, tea.Cmd) {
 }
 
 func dispatchClearMsg() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Second*2, func(t time.Time) tea.Msg {
 		return clearMsg{}
 	})
 }
@@ -593,48 +603,37 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 		cmdValue := m.cmdInput.GetValue().(string)
 		cmdValue = strings.TrimSpace(cmdValue)
 
-		if cmdValue == "q" {
-			return m, tea.Quit
-		}
-
 		if cmdValue == "" {
 			return m, nil
 		}
 
-		start, end, err := note.ParseCopyLinesCommand(cmdValue)
-
-		if err != nil {
-			m.error = err
-			m.noteView.error = err
-
-			return m, tea.Batch(
-				m.dispatchWindowSizeMsg(),
-				dispatchClearMsg(),
-			)
+		if cmdValue == "q" {
+			return m, tea.Quit
 		}
 
-		copiedLines, err := m.store.CopyLines(m.selectedNote.Content, start, end)
-
-		if err != nil {
-			m.error = err
-			m.noteView.error = err
-
-			return m, tea.Batch(
-				m.dispatchWindowSizeMsg(),
-				dispatchClearMsg(),
-			)
+		if strings.HasPrefix(cmdValue, "set-editor") {
+			return m.handleEditorSetCmd(cmdValue)
 		}
 
-		m.successMessage = fmt.Sprintf(
-			"Copied %d %s to clipboard",
-			copiedLines,
-			utils.Ternary(copiedLines == 1, "line", "lines"),
-		)
-		m.noteView.successMessage = m.successMessage
+		if strings.HasPrefix(cmdValue, "set-v_line") {
+			return m.handleVLineCmd(cmdValue)
+		}
 
-		m.cmdMode = false
-		empty := ""
-		m.cmdInput.Value(&empty)
+		return m.handleCopyCmd(cmdValue)
+	}
+
+	cmdModel, cmd := m.cmdInput.Update(msg)
+	m.cmdInput = cmdModel.(*huh.Input)
+
+	return m, cmd
+}
+
+func (m ListModel) handleCopyCmd(cmdValue string) (ListModel, tea.Cmd) {
+	start, end, err := note.ParseCopyLinesCommand(cmdValue)
+
+	if err != nil {
+		m.error = err
+		m.noteView.error = err
 
 		return m, tea.Batch(
 			m.dispatchWindowSizeMsg(),
@@ -642,8 +641,112 @@ func (m ListModel) handleCmdRunner(msg tea.KeyMsg) (ListModel, tea.Cmd) {
 		)
 	}
 
-	cmdModel, cmd := m.cmdInput.Update(msg)
-	m.cmdInput = cmdModel.(*huh.Input)
+	copiedLines, err := m.store.CopyLines(m.selectedNote.Content, start, end)
 
-	return m, cmd
+	if err != nil {
+		m.error = err
+		m.noteView.error = err
+
+		return m, tea.Batch(
+			m.dispatchWindowSizeMsg(),
+			dispatchClearMsg(),
+		)
+	}
+
+	m.successMessage = fmt.Sprintf(
+		"Copied %d %s to clipboard",
+		copiedLines,
+		utils.Ternary(copiedLines == 1, "line", "lines"),
+	)
+	m.noteView.successMessage = m.successMessage
+
+	m.cmdMode = false
+	empty := ""
+	m.cmdInput.Value(&empty)
+
+	return m, tea.Batch(
+		m.dispatchWindowSizeMsg(),
+		dispatchClearMsg(),
+	)
+}
+
+func (m ListModel) handleEditorSetCmd(cmdValue string) (ListModel, tea.Cmd) {
+	editor := strings.TrimSpace(strings.TrimPrefix(cmdValue, "set-editor"))
+
+	if editor == "" {
+		m.error = errors.New("no editor specified")
+		m.noteView.error = m.error
+		return m, tea.Batch(
+			m.dispatchWindowSizeMsg(),
+			dispatchClearMsg(),
+		)
+	}
+
+	err := m.store.SetEditor(editor)
+
+	if err != nil {
+		m.error = err
+		m.noteView.error = err
+		return m, tea.Batch(
+			m.dispatchWindowSizeMsg(),
+			dispatchClearMsg(),
+		)
+	}
+
+	m.successMessage = fmt.Sprintf("Editor set to %s", editor)
+	m.noteView.successMessage = m.successMessage
+	empty := ""
+	m.cmdInput.Value(&empty)
+	m.cmdMode = false
+
+	return m, tea.Batch(
+		m.dispatchWindowSizeMsg(),
+		dispatchClearMsg(),
+	)
+}
+
+func (m ListModel) handleVLineCmd(cmdValue string) (ListModel, tea.Cmd) {
+	value := strings.TrimSpace(strings.TrimPrefix(cmdValue, "set-v_line"))
+
+	var enabled bool
+
+	if value == "" || value == "true" {
+		enabled = true
+	} else if value == "false" {
+		enabled = false
+	} else {
+		m.error = errors.New("invalid value for v_line")
+		m.noteView.error = m.error
+		return m, tea.Batch(
+			m.dispatchWindowSizeMsg(),
+			dispatchClearMsg(),
+		)
+	}
+
+	err := m.store.SetDefaultVLineStatus(enabled)
+
+	if err != nil {
+		m.error = err
+		m.noteView.error = err
+		return m, tea.Batch(
+			m.dispatchWindowSizeMsg(),
+			dispatchClearMsg(),
+		)
+	}
+
+	m.successMessage = fmt.Sprint(
+		utils.Ternary(enabled,
+			"Show line numbers in markdown by default",
+			"Don't show line numbers in markdown by default",
+		),
+	)
+	m.noteView.successMessage = m.successMessage
+	empty := ""
+	m.cmdInput.Value(&empty)
+	m.cmdMode = false
+
+	return m, tea.Batch(
+		m.dispatchWindowSizeMsg(),
+		dispatchClearMsg(),
+	)
 }

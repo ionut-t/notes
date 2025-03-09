@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/ionut-t/notes/config"
 )
 
 type Note struct {
@@ -25,27 +26,20 @@ type Note struct {
 }
 
 type NotesStore struct {
-	Dir string
+	storage string
+	editor  string
 }
 
-func NewNotesStore(dir string) (*NotesStore, error) {
-	if dir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %w", err)
-		}
-		dir = filepath.Join(homeDir, ".notes")
-	}
-
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directory: %w", err)
-	}
+func NewNotesStore() *NotesStore {
+	storage := config.GetStorage()
+	editor := config.GetEditor()
 
 	store := &NotesStore{
-		Dir: dir,
+		storage: storage,
+		editor:  editor,
 	}
 
-	return store, nil
+	return store
 }
 
 func (s *NotesStore) Create(name, content string) error {
@@ -73,7 +67,7 @@ func (s *NotesStore) Update(name, content string) error {
 }
 
 func (s *NotesStore) Delete(name string) error {
-	path := filepath.Join(s.Dir, name+".md")
+	path := filepath.Join(s.storage, name+".md")
 
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("failed to delete note file: %w", err)
@@ -84,10 +78,17 @@ func (s *NotesStore) Delete(name string) error {
 
 // SaveNote saves a note to the store
 func (s *NotesStore) saveNote(note Note) error {
-	path := filepath.Join(s.Dir, s.generateUniqueFileName(note.Name)+".md")
+	path := filepath.Join(s.storage, s.generateUniqueFileName(note.Name)+".md")
 
 	// Create the note content
 	content := strings.Trim(note.Content, "\n")
+
+	// check if directory exists
+	if _, err := os.Stat(s.storage); os.IsNotExist(err) {
+		if err := os.MkdirAll(s.storage, 0755); err != nil {
+			return fmt.Errorf("failed to create notes directory: %w", err)
+		}
+	}
 
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write note file: %w", err)
@@ -130,8 +131,12 @@ func (s NotesStore) generateUniqueFileName(name string) string {
 func (s *NotesStore) GetAllNotes() ([]Note, error) {
 	notes := []Note{}
 
-	err := filepath.WalkDir(s.Dir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+
 			return err
 		}
 
@@ -157,7 +162,7 @@ func (s *NotesStore) GetAllNotes() ([]Note, error) {
 }
 
 func (s *NotesStore) GetNote(name string) (Note, bool) {
-	path := filepath.Join(s.Dir, name+".md")
+	path := filepath.Join(s.storage, name+".md")
 	note, err := s.loadNoteFromFile(path)
 
 	if err == nil {
@@ -242,7 +247,7 @@ func (s *NotesStore) loadNoteFromFile(path string) (Note, error) {
 func (s NotesStore) GetAllNoteFileNames() ([]string, error) {
 	fileNames := []string{}
 
-	err := filepath.WalkDir(s.Dir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -264,17 +269,34 @@ func (s NotesStore) GetAllNoteFileNames() ([]string, error) {
 }
 
 func (s NotesStore) GetEditor() string {
-	editor := os.Getenv("EDITOR")
+	return s.editor
+}
 
-	if editor == "" {
-		editor = "vim"
+func (s NotesStore) GetStorage() string {
+	return s.storage
+}
+
+func (s *NotesStore) SetEditor(editor string) error {
+	err := config.SetEditor(editor)
+
+	if err != nil {
+		return err
 	}
 
-	return editor
+	s.editor = editor
+	return nil
+}
+
+func (s NotesStore) SetDefaultVLineStatus(enabled bool) error {
+	return config.SetDefaultVLineStatus(enabled)
 }
 
 func (s NotesStore) GetNotePath(name string) string {
-	return filepath.Join(s.Dir, name+".md")
+	return filepath.Join(s.storage, name+".md")
+}
+
+func (s NotesStore) GetVLineEnabledByDefault() bool {
+	return config.GetVLineEnabledByDefault()
 }
 
 func (s NotesStore) RenameNote(currentName, newName string) (string, error) {
