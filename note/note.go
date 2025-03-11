@@ -1,6 +1,7 @@
 package note
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"math"
@@ -27,11 +28,11 @@ type Note struct {
 }
 
 type Store struct {
-	storage string
-	editor  string
-
-	notes            []Note
-	currentNoteIndex int
+	storage         string
+	editor          string
+	notes           []Note
+	notesDictionary map[string]Note
+	currentNoteName string
 }
 
 func NewStore() *Store {
@@ -39,23 +40,24 @@ func NewStore() *Store {
 	editor := config.GetEditor()
 
 	store := &Store{
-		storage: storage,
-		editor:  editor,
+		storage:         storage,
+		editor:          editor,
+		notesDictionary: make(map[string]Note),
 	}
 
 	return store
 }
 
-func (s *Store) GetCurrentNote() Note {
-	if s.currentNoteIndex < 0 || s.currentNoteIndex >= len(s.notes) {
-		return Note{}
+func (s *Store) GetCurrentNote() (Note, bool) {
+	if note, ok := s.notesDictionary[s.currentNoteName]; ok {
+		return note, true
 	}
 
-	return s.notes[s.currentNoteIndex]
+	return Note{}, false
 }
 
-func (s *Store) SetCurrentNoteIndex(index int) {
-	s.currentNoteIndex = index
+func (s *Store) SetCurrentNoteName(name string) {
+	s.currentNoteName = name
 }
 
 func (s *Store) Create(name, content string) error {
@@ -83,9 +85,11 @@ func (s *Store) Update(name, content string) error {
 }
 
 func (s *Store) DeleteCurrentNote() error {
-	note := s.GetCurrentNote()
+	if note, ok := s.GetCurrentNote(); ok {
+		return s.Delete(note.Name)
+	}
 
-	return s.Delete(note.Name)
+	return errors.New("note not found")
 }
 
 func (s *Store) Delete(name string) error {
@@ -105,17 +109,19 @@ func (s *Store) Delete(name string) error {
 }
 
 func (s *Store) RenameCurrentNote(newName string) (Note, error) {
-	note := s.GetCurrentNote()
+	if note, ok := s.GetCurrentNote(); ok {
+		return s.RenameNote(note.Name, newName)
+	}
 
-	return s.RenameNote(note.Name, newName)
+	return Note{}, errors.New("note not found")
 }
 
 func (s Store) RenameNote(currentName, newName string) (Note, error) {
 	currentPath := s.GetNotePath(currentName)
 
-	fileName := s.generateUniqueFileName(newName)
+	newName = s.generateUniqueName(newName)
 
-	newPath := s.GetNotePath(fileName)
+	newPath := s.GetNotePath(newName)
 
 	if err := os.Rename(currentPath, newPath); err != nil {
 		return Note{}, fmt.Errorf("failed to rename note file: %w", err)
@@ -123,16 +129,15 @@ func (s Store) RenameNote(currentName, newName string) (Note, error) {
 
 	for i, note := range s.notes {
 		if note.Name == currentName {
-			s.notes[i].Name = fileName
+			s.notes[i].Name = newName
+			delete(s.notesDictionary, currentName)
+			s.notesDictionary[newName] = s.notes[i]
+			s.currentNoteName = newName
 			return s.notes[i], nil
 		}
 	}
 
 	return Note{}, nil
-}
-
-func (s *Store) GetNotes() []Note {
-	return s.notes
 }
 
 func (s *Store) LoadNotes() ([]Note, error) {
@@ -158,12 +163,30 @@ func (s *Store) LoadNotes() ([]Note, error) {
 		}
 
 		notes = append(notes, note)
-		s.notes = notes
+		s.notesDictionary[note.Name] = note
 		return nil
 	})
 
 	if err != nil {
 		return nil, fmt.Errorf("error walking notes directory: %w", err)
+	}
+
+	slices.SortStableFunc(notes, func(i, j Note) int {
+		if i.UpdatedAt.After(j.UpdatedAt) {
+			return -1
+		}
+
+		if i.UpdatedAt.Before(j.UpdatedAt) {
+			return 1
+		}
+
+		return 0
+	})
+
+	s.notes = notes
+
+	if len(notes) > 0 {
+		s.currentNoteName = notes[0].Name
 	}
 
 	return notes, nil
@@ -187,6 +210,14 @@ func (s *Store) GetNote(name string) (Note, bool) {
 		if strings.Contains(n.Name, name) {
 			return n, true
 		}
+	}
+
+	return Note{}, false
+}
+
+func (s *Store) GetNoteByName(name string) (Note, bool) {
+	if note, ok := s.notesDictionary[name]; ok {
+		return note, true
 	}
 
 	return Note{}, false
@@ -373,7 +404,7 @@ func (s Store) getAllNoteFileNames() []string {
 
 // SaveNote saves a note to the store
 func (s *Store) saveNote(note Note) error {
-	path := filepath.Join(s.storage, s.generateUniqueFileName(note.Name)+".md")
+	path := filepath.Join(s.storage, s.generateUniqueName(note.Name)+".md")
 
 	// Create the note content
 	content := strings.Trim(note.Content, "\n")
@@ -392,7 +423,7 @@ func (s *Store) saveNote(note Note) error {
 	return nil
 }
 
-func (s Store) generateUniqueFileName(name string) string {
+func (s Store) generateUniqueName(name string) string {
 	noteFileNames := s.getAllNoteFileNames()
 
 	if len(noteFileNames) == 0 {

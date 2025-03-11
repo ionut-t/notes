@@ -32,7 +32,8 @@ type NoteModel struct {
 }
 
 func NewNoteModel(store *note.Store, width, height int) NoteModel {
-	note := store.GetCurrentNote()
+	note, _ := store.GetCurrentNote()
+
 	vLine := store.GetVLineEnabledByDefault()
 
 	vp := viewport.New(width, height)
@@ -113,11 +114,13 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch keyMsg {
 		case "V":
-			m.vLine = !m.vLine
-			m.markdown = markdown.New(m.store.GetCurrentNote().Content, m.width)
-			m.markdown.SetLineNumbers(m.vLine)
-			content := utils.Ternary(m.vLine, m.markdown.Render(), markdownPadding(m.markdown.Render()))
-			m.viewport.SetContent(content)
+			if note, ok := m.store.GetCurrentNote(); ok {
+				m.vLine = !m.vLine
+				m.markdown = markdown.New(note.Content, m.width)
+				m.markdown.SetLineNumbers(m.vLine)
+				content := utils.Ternary(m.vLine, m.markdown.Render(), markdownPadding(m.markdown.Render()))
+				m.viewport.SetContent(content)
+			}
 		}
 	}
 
@@ -151,7 +154,7 @@ func (m NoteModel) statusBarView() string {
 
 	separator := styles.Surface0.Render(" | ")
 
-	note := m.store.GetCurrentNote()
+	note, _ := m.store.GetCurrentNote()
 
 	name := styles.Primary.Background(bg).Render(note.Name)
 
@@ -198,7 +201,11 @@ func (m NoteModel) statusBarView() string {
 }
 
 func (m NoteModel) getLineNumbers() int {
-	return len(strings.Split(m.store.GetCurrentNote().Content, "\n"))
+	if note, ok := m.store.GetCurrentNote(); ok {
+		return len(strings.Split(note.Content, "\n"))
+	}
+
+	return 0
 }
 
 func (m *NoteModel) setSize(width, height int) {

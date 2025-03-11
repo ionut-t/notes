@@ -2,9 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"slices"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -65,8 +63,7 @@ func NewManager(store *note.Store) *ManagerModel {
 	notes, err := store.LoadNotes()
 
 	if err != nil {
-		fmt.Println("Error getting notes:", err)
-		os.Exit(1)
+		notes = []note.Note{}
 	}
 
 	items := processNotes(notes)
@@ -83,6 +80,7 @@ func NewManager(store *note.Store) *ManagerModel {
 		noteView:    NewNoteModel(store, 100, 20),
 		renameInput: newRenameModel(store),
 		delete:      newDelete(store),
+		error:       err,
 	}
 
 	m.list.Title = "Notes"
@@ -146,7 +144,9 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case cmdNoteDeletedMsg:
 		m.list.RemoveItem(m.list.Index())
-		m.store.SetCurrentNoteIndex(m.list.Index())
+		if item, ok := m.list.SelectedItem().(item); ok {
+			m.store.SetCurrentNoteName(item.title)
+		}
 
 	case cmdInitMsg, cmdAbortMsg:
 		return m, m.dispatchWindowSizeMsg()
@@ -173,6 +173,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			title: note.Name,
 			desc:  fmt.Sprintf("Last modified: %s", note.UpdatedAt.Format("02/01/2006 15:04")),
 		})
+		m.store.SetCurrentNoteName(note.Name)
 
 	case clearMsg:
 		m.successMessage = ""
@@ -243,29 +244,28 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.help = helpModel.(help.Model)
 			cmds = append(cmds, cmd)
 
-			// TODO: Fix filtering
-			// var selected int
-			// filteredItems := m.list.VisibleItems()
+			var selected string
 
-			// if len(filteredItems) > 0 && len(filteredItems) < len(m.list.Items()) {
-			// 	firstItem := filteredItems[0].(item)
-			// 	notes := m.store.GetNotes()
+			filteredItems := m.list.VisibleItems()
 
-			// 	for i, n := range notes {
-			// 		if n.Name == firstItem.title {
-			// 			selected = i
-			// 			break
-			// 		}
-			// 	}
-			// } else {
-			// 	selected = m.list.Index()
-			// }
+			if len(filteredItems) > 0 {
+				if item, ok := filteredItems[0].(item); ok {
+					selected = item.title
+				}
 
-			selected := m.list.Index()
-			m.store.SetCurrentNoteIndex(selected)
+			}
+
+			if item, ok := m.list.SelectedItem().(item); ok {
+				selected = item.title
+			}
+
+			m.store.SetCurrentNoteName(selected)
 			width, height, _ := m.getAvailableSizes()
 			m.noteView.setSize(width-min(width/2, minListWidth), height)
-			m.noteView.updateContent(m.store.GetCurrentNote())
+
+			if note, ok := m.store.GetCurrentNote(); ok {
+				m.noteView.updateContent(note)
+			}
 
 		case noteFocused:
 			noteViewModel, cmd := m.noteView.Update(msg)
@@ -448,18 +448,6 @@ func (m ManagerModel) statusBarView() string {
 func processNotes(notes []note.Note) []list.Item {
 	items := make([]list.Item, len(notes))
 
-	slices.SortStableFunc(notes, func(i, j note.Note) int {
-		if i.UpdatedAt.After(j.UpdatedAt) {
-			return -1
-		}
-
-		if i.UpdatedAt.Before(j.UpdatedAt) {
-			return 1
-		}
-
-		return 0
-	})
-
 	for i, n := range notes {
 		items[i] = item{
 			title: n.Name,
@@ -512,15 +500,21 @@ func (m ManagerModel) handleEditorClose() (ManagerModel, tea.Cmd) {
 	notes, err := m.store.LoadNotes()
 
 	if err != nil {
-		fmt.Println("Error getting notes:", err)
-		os.Exit(1)
+		return m, dispatch(cmdErrorMsg(err))
 	}
 
 	m.list.SetItems(processNotes(notes))
 
-	return m, func() tea.Msg {
-		return tea.EnableMouseCellMotion()
+	if m.view == noteView {
+		if note, ok := m.store.GetCurrentNote(); ok {
+			m.noteView.updateContent(note)
+		}
 	}
+
+	return m, tea.Sequence(
+		m.dispatchWindowSizeMsg(),
+		tea.EnableMouseCellMotion,
+	)
 }
 
 func (m ManagerModel) handleQuit() (ManagerModel, tea.Cmd) {
@@ -546,7 +540,10 @@ func (m ManagerModel) handleSelection() (ManagerModel, tea.Cmd) {
 
 	m.noteView.setSize(m.width, m.height)
 	m.noteView.fullScreen = true
-	m.noteView.updateContent(m.store.GetCurrentNote())
+
+	if note, ok := m.store.GetCurrentNote(); ok {
+		m.noteView.updateContent(note)
+	}
 
 	m.view = noteView
 	m.focusedView = noteFocused
@@ -559,17 +556,26 @@ func (m *ManagerModel) triggerNoteEditor() (bool, tea.Cmd) {
 		return false, nil
 	}
 
-	notePath := m.store.GetNotePath(m.store.GetCurrentNote().Name)
-	execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), notePath), func(error) tea.Msg {
-		return editorFinishedMsg{}
-	})
+	if note, ok := m.store.GetCurrentNote(); ok {
+		notePath := m.store.GetNotePath(note.Name)
+		execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), notePath), func(error) tea.Msg {
+			return editorFinishedMsg{}
+		})
 
-	return true, execCmd
+		return true, execCmd
+	}
+
+	return false, nil
 }
 
 func (m ManagerModel) copyNoteContent() (ManagerModel, tea.Cmd) {
-	if err := m.store.CopyContent(m.store.GetCurrentNote().Content); err != nil {
-		return m, dispatch(cmdErrorMsg(err))
+
+	if note, ok := m.store.GetCurrentNote(); ok {
+		m.noteView.updateContent(note)
+
+		if err := m.store.CopyContent(note.Content); err != nil {
+			return m, dispatch(cmdErrorMsg(err))
+		}
 	}
 
 	m.successMessage = "Note copied to clipboard"

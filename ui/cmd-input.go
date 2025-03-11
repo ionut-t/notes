@@ -41,8 +41,10 @@ func (c cmdInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !c.active {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
 			if keyMsg.String() == ":" {
-				c.active = true
-				return c, c.dispatch(cmdInitMsg{})
+				if _, ok := c.store.GetCurrentNote(); ok {
+					c.active = true
+					return c, c.dispatch(cmdInitMsg{})
+				}
 			}
 		}
 
@@ -111,24 +113,28 @@ func (c cmdInputModel) handleCopyCmd(cmdValue string) (cmdInputModel, tea.Cmd) {
 		return c, c.dispatch(cmdErrorMsg(err))
 	}
 
-	copiedLines, err := c.store.CopyLines(c.store.GetCurrentNote().Content, start, end)
+	if note, ok := c.store.GetCurrentNote(); ok {
+		copiedLines, err := c.store.CopyLines(note.Content, start, end)
 
-	if err != nil {
-		return c, c.dispatch(cmdErrorMsg(err))
+		if err != nil {
+			return c, c.dispatch(cmdErrorMsg(err))
+		}
+
+		successMessage := fmt.Sprintf(
+			"Copied %d %s to clipboard from %s",
+			copiedLines,
+			utils.Ternary(copiedLines == 1, "line", "lines"),
+			note.Name,
+		)
+
+		c.active = false
+		empty := ""
+		c.input.Value(&empty)
+
+		return c, c.dispatch(cmdSuccessMsg(successMessage))
 	}
 
-	successMessage := fmt.Sprintf(
-		"Copied %d %s to clipboard from %s",
-		copiedLines,
-		utils.Ternary(copiedLines == 1, "line", "lines"),
-		c.store.GetCurrentNote().Name,
-	)
-
-	c.active = false
-	empty := ""
-	c.input.Value(&empty)
-
-	return c, c.dispatch(cmdSuccessMsg(successMessage))
+	return c, nil
 }
 
 func (c cmdInputModel) handleEditorSetCmd(cmdValue string) (cmdInputModel, tea.Cmd) {

@@ -43,9 +43,11 @@ func (r renameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !r.active {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
 			if keyMsg.String() == "r" {
-				r.input.Prompt("Rename " + r.store.GetCurrentNote().Name + " to: ")
-				r.active = true
-				return r, dispatch(cmdInitMsg{})
+				if note, ok := r.store.GetCurrentNote(); ok {
+					r.input.Prompt("Rename " + note.Name + " to: ")
+					r.active = true
+					return r, dispatch(cmdInitMsg{})
+				}
 			}
 		}
 
@@ -92,7 +94,7 @@ func (r renameModel) handleRenameNote(msg tea.KeyMsg) (renameModel, tea.Cmd) {
 
 		return r, tea.Sequence(
 			dispatch(cmdNoteRenamedMsg{note}),
-			dispatch(cmdSuccessMsg(fmt.Sprintf("Note renamed to %s", note.Name))),
+			dispatch(cmdSuccessMsg(fmt.Sprintf("Note renamed to \"%s\"", note.Name))),
 		)
 
 	case "esc":

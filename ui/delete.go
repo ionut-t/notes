@@ -66,8 +66,12 @@ func (m deleteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		if !m.active {
 			if keyMsg.String() == "ctrl+d" {
-				m.active = true
-				return m, dispatch(cmdInitMsg{})
+				if _, ok := m.store.GetCurrentNote(); ok {
+					m.active = true
+					return m, dispatch(cmdInitMsg{})
+				}
+
+				return m, nil
 			}
 		}
 
@@ -101,5 +105,9 @@ func (m deleteModel) executeNoteDeletion() (deleteModel, tea.Cmd) {
 }
 
 func (m deleteModel) getCurrentNoteName() string {
-	return m.store.GetCurrentNote().Name
+	if note, ok := m.store.GetCurrentNote(); ok {
+		return note.Name
+	}
+
+	return ""
 }
