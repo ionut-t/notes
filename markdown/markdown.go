@@ -30,7 +30,6 @@ type Line struct {
 	CodeLang    string
 }
 
-// Model represents the markdown rendering model
 type Model struct {
 	Content       string
 	Width         int

@@ -17,7 +17,7 @@ var rootCmd = &cobra.Command{
 	Short: "A simple notes manager",
 	Long:  `A simple CLI tool to manage your notes with add, list, view, edit, and delete functionality.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		store := note.NewNotesStore()
+		store := note.NewStore()
 		runListUI(store)
 	},
 }

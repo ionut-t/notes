@@ -16,7 +16,7 @@ func newAddCmd() *cobra.Command {
 		Short: "Add a new note",
 		Long:  `Add a new note to your collection.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			store := note.NewNotesStore()
+			store := note.NewStore()
 			runAddUI(store)
 		},
 	}
@@ -24,7 +24,7 @@ func newAddCmd() *cobra.Command {
 	return cmd
 }
 
-func runAddUI(store *note.NotesStore) {
+func runAddUI(store *note.Store) {
 	p := tea.NewProgram(ui.NewAddModel(store) /* , tea.WithAltScreen() */)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running UI: %v\n", err)

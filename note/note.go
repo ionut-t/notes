@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,16 +26,19 @@ type Note struct {
 	Byte      []byte
 }
 
-type NotesStore struct {
+type Store struct {
 	storage string
 	editor  string
+
+	notes            []Note
+	currentNoteIndex int
 }
 
-func NewNotesStore() *NotesStore {
+func NewStore() *Store {
 	storage := config.GetStorage()
 	editor := config.GetEditor()
 
-	store := &NotesStore{
+	store := &Store{
 		storage: storage,
 		editor:  editor,
 	}
@@ -42,7 +46,19 @@ func NewNotesStore() *NotesStore {
 	return store
 }
 
-func (s *NotesStore) Create(name, content string) error {
+func (s *Store) GetCurrentNote() Note {
+	if s.currentNoteIndex < 0 || s.currentNoteIndex >= len(s.notes) {
+		return Note{}
+	}
+
+	return s.notes[s.currentNoteIndex]
+}
+
+func (s *Store) SetCurrentNoteIndex(index int) {
+	s.currentNoteIndex = index
+}
+
+func (s *Store) Create(name, content string) error {
 	note := Note{
 		Name:      name,
 		Content:   content,
@@ -53,7 +69,7 @@ func (s *NotesStore) Create(name, content string) error {
 	return s.saveNote(note)
 }
 
-func (s *NotesStore) Update(name, content string) error {
+func (s *Store) Update(name, content string) error {
 	note, ok := s.GetNote(name)
 
 	if !ok {
@@ -66,69 +82,60 @@ func (s *NotesStore) Update(name, content string) error {
 	return s.saveNote(note)
 }
 
-func (s *NotesStore) Delete(name string) error {
+func (s *Store) DeleteCurrentNote() error {
+	note := s.GetCurrentNote()
+
+	return s.Delete(note.Name)
+}
+
+func (s *Store) Delete(name string) error {
 	path := filepath.Join(s.storage, name+".md")
 
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("failed to delete note file: %w", err)
 	}
 
-	return nil
-}
+	notes := slices.DeleteFunc(s.notes, func(n Note) bool {
+		return n.Name == name
+	})
 
-// SaveNote saves a note to the store
-func (s *NotesStore) saveNote(note Note) error {
-	path := filepath.Join(s.storage, s.generateUniqueFileName(note.Name)+".md")
-
-	// Create the note content
-	content := strings.Trim(note.Content, "\n")
-
-	// check if directory exists
-	if _, err := os.Stat(s.storage); os.IsNotExist(err) {
-		if err := os.MkdirAll(s.storage, 0755); err != nil {
-			return fmt.Errorf("failed to create notes directory: %w", err)
-		}
-	}
-
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write note file: %w", err)
-	}
+	s.notes = notes
 
 	return nil
 }
 
-func (s NotesStore) generateUniqueFileName(name string) string {
-	noteFileNames, err := s.GetAllNoteFileNames()
+func (s *Store) RenameCurrentNote(newName string) (Note, error) {
+	note := s.GetCurrentNote()
 
-	if err != nil {
-		return name
-	}
-
-	originalName := name
-	counter := 1
-
-	for {
-		duplicate := false
-		for _, n := range noteFileNames {
-			if n == name {
-				duplicate = true
-				break
-			}
-		}
-
-		if !duplicate {
-			break
-		}
-
-		name = originalName + "-" + strconv.Itoa(counter)
-		counter++
-	}
-
-	return name
+	return s.RenameNote(note.Name, newName)
 }
 
-// GetAllNotes retrieves all notes from the store
-func (s *NotesStore) GetAllNotes() ([]Note, error) {
+func (s Store) RenameNote(currentName, newName string) (Note, error) {
+	currentPath := s.GetNotePath(currentName)
+
+	fileName := s.generateUniqueFileName(newName)
+
+	newPath := s.GetNotePath(fileName)
+
+	if err := os.Rename(currentPath, newPath); err != nil {
+		return Note{}, fmt.Errorf("failed to rename note file: %w", err)
+	}
+
+	for i, note := range s.notes {
+		if note.Name == currentName {
+			s.notes[i].Name = fileName
+			return s.notes[i], nil
+		}
+	}
+
+	return Note{}, nil
+}
+
+func (s *Store) GetNotes() []Note {
+	return s.notes
+}
+
+func (s *Store) LoadNotes() ([]Note, error) {
 	notes := []Note{}
 
 	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
@@ -151,6 +158,7 @@ func (s *NotesStore) GetAllNotes() ([]Note, error) {
 		}
 
 		notes = append(notes, note)
+		s.notes = notes
 		return nil
 	})
 
@@ -161,7 +169,7 @@ func (s *NotesStore) GetAllNotes() ([]Note, error) {
 	return notes, nil
 }
 
-func (s *NotesStore) GetNote(name string) (Note, bool) {
+func (s *Store) GetNote(name string) (Note, bool) {
 	path := filepath.Join(s.storage, name+".md")
 	note, err := s.loadNoteFromFile(path)
 
@@ -169,7 +177,7 @@ func (s *NotesStore) GetNote(name string) (Note, bool) {
 		return note, true
 	}
 
-	notes, err := s.GetAllNotes()
+	notes, err := s.LoadNotes()
 
 	if err != nil {
 		return Note{}, false
@@ -184,99 +192,15 @@ func (s *NotesStore) GetNote(name string) (Note, bool) {
 	return Note{}, false
 }
 
-func getCreationTime(filePath string) (time.Time, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return time.Time{}, fmt.Errorf("failed to get raw syscall.Stat_t")
-	}
-
-	// Different OS has different fields in syscall.Stat_t
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS has Birthtimespec for creation time
-		return time.Unix(int64(stat.Birthtimespec.Sec), int64(stat.Birthtimespec.Nsec)), nil
-	case "windows":
-		// Windows implementation would be different and should use syscall.GetFileTime
-		return time.Time{}, fmt.Errorf("use separate Windows implementation")
-	default:
-		// Linux generally doesn't store true creation time, using Ctim (status change time)
-		return time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec)), nil
-	}
-}
-
-func (s *NotesStore) loadNoteFromFile(path string) (Note, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Note{}, fmt.Errorf("failed to read note file: %w", err)
-	}
-
-	content := string(data)
-
-	name := strings.TrimSuffix(filepath.Base(path), ".md")
-
-	fileInfo, err := os.Stat(path)
-
-	if err != nil {
-		fmt.Printf("Error getting file info: %v\n", err)
-		return Note{}, err
-	}
-
-	createdAt, err := getCreationTime(path)
-
-	if err != nil {
-		fmt.Printf("Error getting file creation time: %v\n", err)
-		return Note{}, err
-	}
-
-	updatedAt := fileInfo.ModTime()
-
-	return Note{
-		Name:      name,
-		Content:   content,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Byte:      data,
-	}, nil
-}
-
-func (s NotesStore) GetAllNoteFileNames() ([]string, error) {
-	fileNames := []string{}
-
-	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories and non-markdown files
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
-			return nil
-		}
-
-		fileNames = append(fileNames, strings.TrimSuffix(d.Name(), ".md"))
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error walking notes directory: %w", err)
-	}
-
-	return fileNames, nil
-}
-
-func (s NotesStore) GetEditor() string {
+func (s Store) GetEditor() string {
 	return s.editor
 }
 
-func (s NotesStore) GetStorage() string {
+func (s Store) GetStorage() string {
 	return s.storage
 }
 
-func (s *NotesStore) SetEditor(editor string) error {
+func (s *Store) SetEditor(editor string) error {
 	err := config.SetEditor(editor)
 
 	if err != nil {
@@ -287,33 +211,19 @@ func (s *NotesStore) SetEditor(editor string) error {
 	return nil
 }
 
-func (s NotesStore) SetDefaultVLineStatus(enabled bool) error {
+func (s Store) SetDefaultVLineStatus(enabled bool) error {
 	return config.SetDefaultVLineStatus(enabled)
 }
 
-func (s NotesStore) GetNotePath(name string) string {
+func (s Store) GetNotePath(name string) string {
 	return filepath.Join(s.storage, name+".md")
 }
 
-func (s NotesStore) GetVLineEnabledByDefault() bool {
+func (s Store) GetVLineEnabledByDefault() bool {
 	return config.GetVLineEnabledByDefault()
 }
 
-func (s NotesStore) RenameNote(currentName, newName string) (string, error) {
-	currentPath := s.GetNotePath(currentName)
-
-	fileName := s.generateUniqueFileName(newName)
-
-	newPath := s.GetNotePath(fileName)
-
-	if err := os.Rename(currentPath, newPath); err != nil {
-		return fileName, fmt.Errorf("failed to rename note file: %w", err)
-	}
-
-	return fileName, nil
-}
-
-func (s *NotesStore) CopyContent(content string) error {
+func (s *Store) CopyContent(content string) error {
 	if err := clipboard.WriteAll(content); err != nil {
 		return fmt.Errorf("failed to copy note content: %w", err)
 	}
@@ -321,7 +231,7 @@ func (s *NotesStore) CopyContent(content string) error {
 	return nil
 }
 
-func (s *NotesStore) CopyLines(content string, start, end int) (int, error) {
+func (s *Store) CopyLines(content string, start, end int) (int, error) {
 	lines := strings.Split(content, "\n")
 
 	if end == math.MaxInt32 {
@@ -441,4 +351,133 @@ func ParseCopyLinesCommand(cmd string) (int, int, error) {
 	}
 
 	return 0, 0, fmt.Errorf("invalid command format: %s", cmd)
+}
+
+func (s Store) getAllNoteFileNames() []string {
+	var notes []Note
+
+	if loadedNotes, err := s.LoadNotes(); err == nil {
+		notes = loadedNotes
+	} else {
+		notes = s.notes
+	}
+
+	fileNames := []string{}
+	for _, note := range notes {
+		name := strings.ToLower(strings.TrimSuffix(note.Name, ".md"))
+		fileNames = append(fileNames, name)
+	}
+
+	return fileNames
+}
+
+// SaveNote saves a note to the store
+func (s *Store) saveNote(note Note) error {
+	path := filepath.Join(s.storage, s.generateUniqueFileName(note.Name)+".md")
+
+	// Create the note content
+	content := strings.Trim(note.Content, "\n")
+
+	// check if directory exists
+	if _, err := os.Stat(s.storage); os.IsNotExist(err) {
+		if err := os.MkdirAll(s.storage, 0755); err != nil {
+			return fmt.Errorf("failed to create notes directory: %w", err)
+		}
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write note file: %w", err)
+	}
+
+	return nil
+}
+
+func (s Store) generateUniqueFileName(name string) string {
+	noteFileNames := s.getAllNoteFileNames()
+
+	if len(noteFileNames) == 0 {
+		return name
+	}
+
+	originalName := name
+	counter := 1
+
+	for {
+		duplicate := false
+		for _, n := range noteFileNames {
+			if n == strings.ToLower(name) {
+				duplicate = true
+				break
+			}
+		}
+
+		if !duplicate {
+			break
+		}
+
+		name = originalName + "-" + strconv.Itoa(counter)
+		counter++
+	}
+
+	return name
+}
+
+func getCreationTime(filePath string) (time.Time, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return time.Time{}, fmt.Errorf("failed to get raw syscall.Stat_t")
+	}
+
+	// Different OS has different fields in syscall.Stat_t
+	switch runtime.GOOS {
+	case "darwin":
+		// macOS has Birthtimespec for creation time
+		return time.Unix(int64(stat.Birthtimespec.Sec), int64(stat.Birthtimespec.Nsec)), nil
+	case "windows":
+		// Windows implementation would be different and should use syscall.GetFileTime
+		return time.Time{}, fmt.Errorf("use separate Windows implementation")
+	default:
+		// Linux generally doesn't store true creation time, using Ctim (status change time)
+		return time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec)), nil
+	}
+}
+
+func (s *Store) loadNoteFromFile(path string) (Note, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Note{}, fmt.Errorf("failed to read note file: %w", err)
+	}
+
+	content := string(data)
+
+	name := strings.TrimSuffix(filepath.Base(path), ".md")
+
+	fileInfo, err := os.Stat(path)
+
+	if err != nil {
+		fmt.Printf("Error getting file info: %v\n", err)
+		return Note{}, err
+	}
+
+	createdAt, err := getCreationTime(path)
+
+	if err != nil {
+		fmt.Printf("Error getting file creation time: %v\n", err)
+		return Note{}, err
+	}
+
+	updatedAt := fileInfo.ModTime()
+
+	return Note{
+		Name:      name,
+		Content:   content,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Byte:      data,
+	}, nil
 }

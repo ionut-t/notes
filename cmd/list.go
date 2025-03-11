@@ -16,7 +16,7 @@ func listCmd() *cobra.Command {
 		Short: "List all notes",
 		Long:  `List all notes in your collection.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			store := note.NewNotesStore()
+			store := note.NewStore()
 			runListUI(store)
 		},
 	}
@@ -24,8 +24,8 @@ func listCmd() *cobra.Command {
 	return cmd
 }
 
-func runListUI(store *note.NotesStore) {
-	m := ui.NewListModel(store)
+func runListUI(store *note.Store) {
+	m := ui.NewManager(store)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 
 	if _, err := p.Run(); err != nil {

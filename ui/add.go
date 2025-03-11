@@ -29,7 +29,7 @@ const (
 type updateValueMsg []byte
 
 type AddModel struct {
-	store         *note.NotesStore
+	store         *note.Store
 	width, height int
 	err           error
 	success       bool
@@ -42,7 +42,7 @@ type AddModel struct {
 	help help.Model
 }
 
-func NewAddModel(store *note.NotesStore) *AddModel {
+func NewAddModel(store *note.Store) *AddModel {
 	content := huh.NewText().
 		Key("content").
 		Placeholder("Write your note here").

@@ -20,7 +20,7 @@ import (
 var markdownPadding = lipgloss.NewStyle().Padding(0, 4).Render
 
 type NoteModel struct {
-	note           note.Note
+	store          *note.Store
 	viewport       viewport.Model
 	width, height  int
 	help           help.Model
@@ -28,13 +28,16 @@ type NoteModel struct {
 	error          error
 	markdown       markdown.Model
 	vLine          bool
+	fullScreen     bool
 }
 
-func NewNoteModel(note note.Note, vLine bool, width, height int) NoteModel {
-	vp := viewport.New(width, height-1)
+func NewNoteModel(store *note.Store, width, height int) NoteModel {
+	note := store.GetCurrentNote()
+	vLine := store.GetVLineEnabledByDefault()
+
+	vp := viewport.New(width, height)
 
 	md := markdown.New(note.Content, width)
-
 	md.SetLineNumbers(vLine)
 
 	content := utils.Ternary(vLine, md.Render(), markdownPadding(md.Render()))
@@ -61,7 +64,7 @@ func NewNoteModel(note note.Note, vLine bool, width, height int) NoteModel {
 	helpMenu.SetSize(width, height)
 
 	return NoteModel{
-		note:     note,
+		store:    store,
 		viewport: vp,
 		width:    width,
 		height:   height,
@@ -76,6 +79,10 @@ func (m NoteModel) Init() tea.Cmd {
 }
 
 func (m NoteModel) View() string {
+	if !m.fullScreen {
+		return m.viewport.View()
+	}
+
 	content := lipgloss.JoinVertical(
 		lipgloss.Top,
 		m.viewport.View(),
@@ -106,6 +113,7 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch keyMsg {
 		case "V":
 			m.vLine = !m.vLine
+			m.markdown = markdown.New(m.store.GetCurrentNote().Content, m.width)
 			m.markdown.SetLineNumbers(m.vLine)
 			content := utils.Ternary(m.vLine, m.markdown.Render(), markdownPadding(m.markdown.Render()))
 			m.viewport.SetContent(content)
@@ -115,14 +123,21 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
-	helpModel, cmd := m.help.Update(msg)
-	m.help = helpModel.(help.Model)
-	cmds = append(cmds, cmd)
+	if m.fullScreen {
+		helpModel, cmd := m.help.Update(msg)
+		m.help = helpModel.(help.Model)
+		m.help.SetSize(m.width, m.height)
+		cmds = append(cmds, cmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }
 
 func (m NoteModel) statusBarView() string {
+	if !m.fullScreen {
+		return ""
+	}
+
 	bg := styles.Surface0.GetBackground()
 
 	if m.successMessage != "" {
@@ -135,9 +150,11 @@ func (m NoteModel) statusBarView() string {
 
 	separator := styles.Surface0.Render(" | ")
 
-	name := styles.Primary.Background(bg).Render(m.note.Name)
+	note := m.store.GetCurrentNote()
 
-	modifiedDate := styles.Accent.Background(bg).Render("Last Modified " + m.note.CreatedAt.Format("02/01/2006 15:04"))
+	name := styles.Primary.Background(bg).Render(note.Name)
+
+	modifiedDate := styles.Accent.Background(bg).Render("Last Modified " + note.CreatedAt.Format("02/01/2006 15:04"))
 
 	noteInfo := styles.Surface0.Padding(0, 1).Render(
 		name + separator + modifiedDate,
@@ -180,25 +197,29 @@ func (m NoteModel) statusBarView() string {
 }
 
 func (m NoteModel) getLineNumbers() int {
-	return len(strings.Split(m.note.Content, "\n"))
-}
-
-func (m *NoteModel) setNote(note note.Note) {
-	m.note = note
-	md := markdown.New(note.Content, m.width)
-	m.markdown = md
-	md.SetLineNumbers(m.vLine)
-	content := utils.Ternary(m.vLine, md.Render(), markdownPadding(md.Render()))
-
-	m.viewport.SetContent(content)
+	return len(strings.Split(m.store.GetCurrentNote().Content, "\n"))
 }
 
 func (m *NoteModel) setHeight(height int) {
 	m.height = height
 
-	if m.help.FullView {
-		m.viewport.Height = height - lipgloss.Height(m.statusBarView()) - lipgloss.Height(m.help.View())
-	} else {
-		m.viewport.Height = height - lipgloss.Height(m.statusBarView())
-	}
+	statusBarViewHeight := utils.Ternary(m.fullScreen, lipgloss.Height(m.statusBarView()), 0)
+	helpHeight := utils.Ternary(m.help.FullView, lipgloss.Height(m.help.View()), 0)
+
+	m.viewport.Height = height - helpHeight - statusBarViewHeight
+}
+
+func (m *NoteModel) setWidth(width int) {
+	m.width = width
+}
+
+func (m *NoteModel) updateContent(note note.Note) {
+	md := markdown.New(note.Content, m.width)
+	md.SetLineNumbers(m.vLine)
+
+	content := utils.Ternary(m.vLine, md.Render(), markdownPadding(md.Render()))
+	m.viewport.SetContent(content)
+	m.viewport.Height = m.height
+	m.viewport.Width = m.width
+	m.viewport.SetYOffset(0)
 }
