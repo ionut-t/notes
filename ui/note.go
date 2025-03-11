@@ -107,6 +107,7 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
 	case tea.KeyMsg:
 		keyMsg := tea.KeyMsg(msg).String()
 
@@ -200,21 +201,19 @@ func (m NoteModel) getLineNumbers() int {
 	return len(strings.Split(m.store.GetCurrentNote().Content, "\n"))
 }
 
-func (m *NoteModel) setHeight(height int) {
+func (m *NoteModel) setSize(width, height int) {
+	m.width = width
 	m.height = height
 
 	statusBarViewHeight := utils.Ternary(m.fullScreen, lipgloss.Height(m.statusBarView()), 0)
 	helpHeight := utils.Ternary(m.help.FullView, lipgloss.Height(m.help.View()), 0)
 
 	m.viewport.Height = height - helpHeight - statusBarViewHeight
-}
-
-func (m *NoteModel) setWidth(width int) {
-	m.width = width
+	m.viewport.Width = width
 }
 
 func (m *NoteModel) updateContent(note note.Note) {
-	md := markdown.New(note.Content, m.width)
+	md := markdown.New(note.Content, max(m.width, 40))
 	md.SetLineNumbers(m.vLine)
 
 	content := utils.Ternary(m.vLine, md.Render(), markdownPadding(md.Render()))

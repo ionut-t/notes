@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
+	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
@@ -187,24 +188,6 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.list.FilterState() == list.Filtering {
-			filteredItems := m.list.VisibleItems()
-
-			if len(filteredItems) == 0 {
-				break
-			}
-
-			firstItem := filteredItems[0].(item)
-
-			notes := m.store.GetNotes()
-
-			for i, n := range notes {
-				if n.Name == firstItem.title {
-					m.store.SetCurrentNoteIndex(i)
-					m.noteView.updateContent(n)
-					break
-				}
-			}
-
 			break
 		}
 
@@ -280,6 +263,8 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			selected := m.list.Index()
 			m.store.SetCurrentNoteIndex(selected)
+			width, height, _ := m.getAvailableSizes()
+			m.noteView.setSize(width-min(width/2, minListWidth), height)
 			m.noteView.updateContent(m.store.GetCurrentNote())
 
 		case noteFocused:
@@ -508,20 +493,18 @@ func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 	}
 
 	if m.view == noteView {
-		m.noteView.setHeight(msg.Height - cmdViewHeight)
-		m.noteView.setWidth(msg.Width)
+		m.noteView.setSize(msg.Width, msg.Height-cmdViewHeight)
 	}
 
 	if m.view == splitView {
-		listWidth := availableWidth / 2
+		listWidth := min(availableWidth/2, minListWidth)
 
 		// Set list dimensions
 		m.list.SetHeight(availableHeight)
 		m.list.SetWidth(listWidth)
 
 		// Set note view dimensions
-		m.noteView.setHeight(availableHeight)
-		m.noteView.setWidth(availableWidth - listWidth)
+		m.noteView.setSize(availableWidth-listWidth, availableHeight)
 	}
 }
 
@@ -561,8 +544,7 @@ func (m ManagerModel) handleSelection() (ManagerModel, tea.Cmd) {
 		return m, nil
 	}
 
-	m.noteView.setHeight(m.height)
-	m.noteView.setWidth(m.width)
+	m.noteView.setSize(m.width, m.height)
 	m.noteView.fullScreen = true
 	m.noteView.updateContent(m.store.GetCurrentNote())
 
@@ -604,7 +586,6 @@ func (m ManagerModel) getAvailableSizes() (int, int, int) {
 	h, v := viewPadding.GetFrameSize()
 
 	var cmdExecutorHeight int
-	var statusBarHeight int
 	var deleteViewHeight int
 
 	if m.cmdInput.active {
@@ -613,15 +594,15 @@ func (m ManagerModel) getAvailableSizes() (int, int, int) {
 
 	if m.renameInput.active {
 		cmdExecutorHeight = lipgloss.Height(m.renameInput.View())
-	} else {
-		statusBarHeight = lipgloss.Height(m.statusBarView())
 	}
+
+	statusBarHeight := utils.Ternary(m.cmdInput.active || m.renameInput.active, 0, lipgloss.Height(m.statusBarView()))
 
 	if m.delete.active {
 		deleteViewHeight = lipgloss.Height(m.delete.View())
 	}
 
-	availableHeight := m.height - v - statusBarHeight - cmdExecutorHeight - deleteViewHeight - 1
+	availableHeight := m.height - v - statusBarHeight - cmdExecutorHeight - deleteViewHeight - activeBorder.GetBorderBottomSize()
 	availableWidth := m.width - h
 
 	cmdViewHeight := cmdExecutorHeight - deleteViewHeight
