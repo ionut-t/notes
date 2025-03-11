@@ -6,14 +6,26 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ionut-t/notes/internal/keymap"
+	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/styles"
 )
 
-type FullViewToggledMsg struct {
-	Opened bool
+type FullViewToggledMsg struct{}
+
+type Model struct {
+	Keys      keymap.Model
+	Searching bool
+	FullView  bool
+	help      help.Model
+	width     int
+	height    int
+	viewport  viewport.Model
+
+	renderedFullView string
 }
 
 func (m Model) getKeys() keymap.Model {
@@ -30,17 +42,6 @@ func (m *Model) CombineWithDefaultKeys(keys keymap.Model) {
 
 func (m *Model) SetKeyMap(keys keymap.Model) {
 	m.Keys = keys
-}
-
-type Model struct {
-	Keys      keymap.Model
-	Searching bool
-	FullView  bool
-
-	help help.Model
-
-	width  int
-	height int
 }
 
 func New() Model {
@@ -66,13 +67,16 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) View() string {
 	if m.FullView {
-		return m.renderFullHelpView()
+		return m.viewport.View() + m.getPercentageBar()
 	}
 
 	return lipgloss.NewStyle().Padding(0, 1).Render(m.help.View(m.getKeys()))
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	vp, cmd := m.viewport.Update(msg)
+	m.viewport = vp
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.help.Width = msg.Width
@@ -82,15 +86,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.Keys.Help):
 			m.FullView = !m.FullView
 
+			if m.FullView {
+				m.renderedFullView = utils.Ternary(m.renderedFullView == "", m.renderFullHelpView(), m.renderedFullView)
+				height := min(lipgloss.Height(m.renderedFullView), m.height/2)
+				m.viewport.Height = height
+				m.viewport.Width = m.width
+				m.viewport.SetContent(m.renderedFullView)
+			}
+
 			return m, func() tea.Msg {
-				return FullViewToggledMsg{
-					Opened: m.FullView,
-				}
+				return FullViewToggledMsg{}
 			}
 		}
 	}
 
-	return m, nil
+	return m, cmd
 }
 
 func (m *Model) SetSize(width, height int) {
@@ -154,4 +164,17 @@ func (m Model) renderFullHelpView() string {
 	}
 
 	return bg.Width(m.width).Padding(1, 1).Render(strings.Trim(sb.String(), "\n"))
+}
+
+func (m Model) getPercentageBar() string {
+	scrollPercent := m.viewport.ScrollPercent()
+
+	if lipgloss.Height(m.renderedFullView) <= m.height/2 {
+		return ""
+	}
+
+	percentage := styles.Accent.Background(styles.Crust.GetBackground()).Render(fmt.Sprintf("%3.f%%", scrollPercent*100))
+
+	return "+\n" + styles.Crust.Render(strings.Repeat(" ", m.width-lipgloss.Width(percentage))) + percentage
+
 }

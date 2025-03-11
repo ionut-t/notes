@@ -104,11 +104,15 @@ func NewManager(store *note.Store) *ManagerModel {
 	m.help.Keys.FullHelpBindings = []key.Binding{
 		keymap.Up,
 		keymap.Down,
+		keymap.Left,
+		keymap.Right,
 		keymap.Select,
 		keymap.QuickEditor,
 		keymap.Rename,
 		keymap.Search,
+		keymap.VLine,
 		keymap.Copy,
+		keymap.CopyCodeBlock,
 		keymap.Delete,
 		keymap.Quit,
 		keymap.Help,
@@ -237,12 +241,11 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.focusedView {
 		case listFocused:
 			var cmd tea.Cmd
-			m.list, cmd = m.list.Update(msg)
-			cmds = append(cmds, cmd)
 
-			helpModel, cmd := m.help.Update(msg)
-			m.help = helpModel.(help.Model)
-			cmds = append(cmds, cmd)
+			if !m.help.FullView {
+				m.list, cmd = m.list.Update(msg)
+				cmds = append(cmds, cmd)
+			}
 
 			var selected string
 
@@ -268,8 +271,16 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case noteFocused:
-			noteViewModel, cmd := m.noteView.Update(msg)
-			m.noteView = noteViewModel.(NoteModel)
+			if !m.help.FullView {
+				noteViewModel, cmd := m.noteView.Update(msg)
+				m.noteView = noteViewModel.(NoteModel)
+				cmds = append(cmds, cmd)
+			}
+		}
+
+		if m.view != noteView {
+			helpModel, cmd := m.help.Update(msg)
+			m.help = helpModel.(help.Model)
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -518,8 +529,9 @@ func (m ManagerModel) handleEditorClose() (ManagerModel, tea.Cmd) {
 }
 
 func (m ManagerModel) handleQuit() (ManagerModel, tea.Cmd) {
-	if m.renameInput.active {
-		return m, nil
+	if m.help.FullView {
+		m.help.FullView = false
+		return m, dispatch(help.FullViewToggledMsg{})
 	}
 
 	if m.view == noteView {
@@ -538,6 +550,7 @@ func (m ManagerModel) handleSelection() (ManagerModel, tea.Cmd) {
 		return m, nil
 	}
 
+	m.help.FullView = false
 	m.noteView.setSize(m.width, m.height)
 	m.noteView.fullScreen = true
 
