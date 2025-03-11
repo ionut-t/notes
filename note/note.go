@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
-	"github.com/ionut-t/notes/config"
+	"github.com/ionut-t/notes/internal/config"
 )
 
 type Note struct {
