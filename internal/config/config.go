@@ -57,7 +57,7 @@ func GetVLineEnabledByDefault() bool {
 }
 
 func SetEditor(editor string) error {
-	if err := checkConfigFile(); err != nil {
+	if _, err := InitialiseConfigFile(); err != nil {
 		return err
 	}
 
@@ -71,7 +71,7 @@ func SetEditor(editor string) error {
 }
 
 func SetDefaultVLineStatus(enabled bool) error {
-	if err := checkConfigFile(); err != nil {
+	if _, err := InitialiseConfigFile(); err != nil {
 		return err
 	}
 
@@ -83,12 +83,39 @@ func SetDefaultVLineStatus(enabled bool) error {
 	return viper.WriteConfig()
 }
 
-func checkConfigFile() error {
+func InitialiseConfigFile() (string, error) {
 	configPath := viper.ConfigFileUsed()
 
 	if configPath == "" {
-		return fmt.Errorf("config file not found; close program and run `notes config`")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+
+		notesDir := filepath.Join(home, ".notes")
+		if err := os.MkdirAll(notesDir, 0755); err != nil {
+			return "", err
+		}
+
+		configPath = filepath.Join(notesDir, ".config.toml")
+		viper.SetConfigFile(configPath)
+
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			viper.SetDefault("editor", GetEditor())
+			viper.SetDefault("storage", notesDir)
+			viper.SetDefault("v_line", false)
+
+			if err := viper.WriteConfig(); err != nil {
+				return "", err
+			}
+
+			fmt.Println("Created config at", configPath)
+		} else {
+			// File exists but Viper couldn't find it, so explicitly set it
+			viper.SetConfigFile(configPath)
+			_ = viper.ReadInConfig()
+		}
 	}
 
-	return nil
+	return configPath, nil
 }
