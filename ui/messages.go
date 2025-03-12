@@ -7,7 +7,7 @@ import (
 	"github.com/ionut-t/notes/note"
 )
 
-type editorFinishedMsg struct{}
+type editorClosedMsg struct{}
 
 type clearMsg struct{}
 

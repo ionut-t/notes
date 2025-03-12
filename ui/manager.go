@@ -143,7 +143,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case help.FullViewToggledMsg:
 		return m, m.dispatchWindowSizeMsg()
 
-	case editorFinishedMsg:
+	case editorClosedMsg:
 		return m.handleEditorClose()
 
 	case cmdNoteDeletedMsg:
@@ -572,7 +572,7 @@ func (m *ManagerModel) triggerNoteEditor() (bool, tea.Cmd) {
 	if note, ok := m.store.GetCurrentNote(); ok {
 		notePath := m.store.GetNotePath(note.Name)
 		execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), notePath), func(error) tea.Msg {
-			return editorFinishedMsg{}
+			return editorClosedMsg{}
 		})
 
 		return true, execCmd
