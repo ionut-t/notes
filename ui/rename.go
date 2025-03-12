@@ -44,7 +44,9 @@ func (r renameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
 			if keyMsg.String() == "r" {
 				if note, ok := r.store.GetCurrentNote(); ok {
-					r.input.Prompt("Rename " + note.Name + " to: ")
+					r.input.Prompt("Rename: ")
+					value := note.Name
+					r.input.Value(&value)
 					r.active = true
 					return r, dispatch(cmdInitMsg{})
 				}
