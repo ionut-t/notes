@@ -17,6 +17,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/ionut-t/notes/internal/config"
+	"github.com/ionut-t/notes/internal/utils"
 )
 
 type Note struct {
@@ -186,7 +187,7 @@ func (s *Store) LoadNotes() ([]Note, error) {
 	s.notes = notes
 
 	if len(notes) > 0 {
-		s.currentNoteName = notes[0].Name
+		s.currentNoteName = utils.Ternary(s.currentNoteName == "", notes[0].Name, s.currentNoteName)
 	}
 
 	return notes, nil
