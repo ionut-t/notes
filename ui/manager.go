@@ -519,10 +519,16 @@ func (m ManagerModel) handleEditorClose() (ManagerModel, tea.Cmd) {
 
 	m.list.SetItems(processNotes(notes))
 
-	if m.view == noteView {
-		if note, ok := m.store.GetCurrentNote(); ok {
-			m.noteView.updateContent(note)
-		}
+	if note, ok := m.store.GetCurrentNote(); ok {
+		m.noteView.updateContent(note)
+		// there seems to be a bug in bubbletea that causes the filter to not
+		// preserve the selected item after the list is updated
+		// reset the filter until a better solution is found
+		m.list.ResetFilter()
+	}
+
+	if m.store.IsFirstNote() {
+		m.list.ResetSelected()
 	}
 
 	return m, tea.Sequence(

@@ -193,6 +193,16 @@ func (s *Store) LoadNotes() ([]Note, error) {
 	return notes, nil
 }
 
+// used to determine if the note was updated externally
+// which means that its position in the list might have changed
+func (s *Store) IsFirstNote() bool {
+	if len(s.notes) == 0 {
+		return true
+	}
+
+	return s.currentNoteName == s.notes[0].Name
+}
+
 func (s *Store) GetNote(name string) (Note, bool) {
 	path := filepath.Join(s.storage, name+".md")
 	note, err := s.loadNoteFromFile(path)
