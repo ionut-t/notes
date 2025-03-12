@@ -15,17 +15,16 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "notes",
 	Short: "A simple notes manager",
-	Long:  `A simple CLI tool to manage your notes with add, list, view, edit, and delete functionality.`,
+	Long:  `A simple CLI tool for managing notes`,
 	Run: func(cmd *cobra.Command, args []string) {
 		store := note.NewStore()
-		runListUI(store)
+		runManagerUI(store)
 	},
 }
 
 func Execute() {
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(newAddCmd())
-	rootCmd.AddCommand(listCmd())
 
 	err := rootCmd.Execute()
 	if err != nil {
