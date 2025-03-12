@@ -5,22 +5,6 @@ import (
 	"github.com/alecthomas/chroma/styles"
 )
 
-// Formatting constants
-const (
-	bold      = "\033[1m"
-	italic    = "\033[3m"
-	reset     = "\033[0m"
-	underline = "\033[4m"
-	blue      = "\033[34m"
-	green     = "\033[32m"
-	red       = "\033[31m"
-	yellow    = "\033[33m"
-	cyan      = "\033[36m"
-	magenta   = "\033[35m"
-	gray      = "\033[90m"
-	dimmed    = "\033[2m"
-)
-
 // RegisterCatppuccinStyles registers the Catppuccin color themes
 func RegisterCatppuccinStyles() {
 	// Register Catppuccin Mocha (dark theme)
@@ -123,38 +107,6 @@ func (m *Model) SetCatppuccinTheme(mode string) {
 	} else if mode == "light" {
 		m.SetStyle("catppuccin-latte")
 		m.SetTerminalTheme("light")
-	}
-}
-
-// GetAvailableThemes returns a list of recommended themes including Catppuccin
-func GetAvailableThemes() map[string][]string {
-	// Make sure Catppuccin styles are registered
-	if styles.Get("catppuccin-mocha") == nil {
-		RegisterCatppuccinStyles()
-	}
-
-	// Return themes organized by category
-	return map[string][]string{
-		"Dark": {
-			"catppuccin-mocha", // Our custom Catppuccin dark theme
-			"monokai",          // Popular dark theme
-			"dracula",          // Another popular dark theme
-			"nord",             // Nordic-inspired dark theme
-			"solarized-dark",   // Solarized dark variant
-		},
-		"Light": {
-			"catppuccin-latte", // Our custom Catppuccin light theme
-			"github",           // GitHub-inspired light theme
-			"solarized-light",  // Solarized light variant
-			"pygments",         // Default Python highlighting theme
-			"autumn",           // Light theme with warm colors
-		},
-		"Special": {
-			"gruvbox-dark",  // Retro dark theme
-			"gruvbox-light", // Retro light theme
-			"monokailight",  // Light variant of monokai
-			"native",        // Adapts to terminal colors
-		},
 	}
 }
 
