@@ -43,7 +43,7 @@ func (c cmdInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if keyMsg.String() == ":" {
 				if _, ok := c.store.GetCurrentNote(); ok {
 					c.active = true
-					return c, c.dispatch(cmdInitMsg{})
+					return c, dispatch(cmdInitMsg{})
 				}
 			}
 		}
@@ -75,7 +75,7 @@ func (c cmdInputModel) handleCmdRunner(msg tea.KeyMsg) (cmdInputModel, tea.Cmd) 
 		c.active = false
 		empty := ""
 		c.input.Value(&empty)
-		return c, c.dispatch(cmdAbortMsg{})
+		return c, dispatch(cmdAbortMsg{})
 
 	case "enter":
 		cmdValue := c.input.GetValue().(string)
@@ -110,14 +110,14 @@ func (c cmdInputModel) handleCopyCmd(cmdValue string) (cmdInputModel, tea.Cmd) {
 	start, end, err := note.ParseCopyLinesCommand(cmdValue)
 
 	if err != nil {
-		return c, c.dispatch(cmdErrorMsg(err))
+		return c, dispatch(cmdErrorMsg(err))
 	}
 
 	if note, ok := c.store.GetCurrentNote(); ok {
 		copiedLines, err := c.store.CopyLines(note.Content, start, end)
 
 		if err != nil {
-			return c, c.dispatch(cmdErrorMsg(err))
+			return c, dispatch(cmdErrorMsg(err))
 		}
 
 		successMessage := fmt.Sprintf(
@@ -131,7 +131,7 @@ func (c cmdInputModel) handleCopyCmd(cmdValue string) (cmdInputModel, tea.Cmd) {
 		empty := ""
 		c.input.Value(&empty)
 
-		return c, c.dispatch(cmdSuccessMsg(successMessage))
+		return c, dispatch(cmdSuccessMsg(successMessage))
 	}
 
 	return c, nil
@@ -141,13 +141,13 @@ func (c cmdInputModel) handleEditorSetCmd(cmdValue string) (cmdInputModel, tea.C
 	editor := strings.TrimSpace(strings.TrimPrefix(cmdValue, "set-editor"))
 
 	if editor == "" {
-		return c, c.dispatch(cmdErrorMsg(errors.New("no editor specified")))
+		return c, dispatch(cmdErrorMsg(errors.New("no editor specified")))
 	}
 
 	err := c.store.SetEditor(editor)
 
 	if err != nil {
-		return c, c.dispatch(cmdErrorMsg(err))
+		return c, dispatch(cmdErrorMsg(err))
 	}
 
 	successMessage := fmt.Sprintf("Editor set to %s", editor)
@@ -156,7 +156,7 @@ func (c cmdInputModel) handleEditorSetCmd(cmdValue string) (cmdInputModel, tea.C
 	c.input.Value(&empty)
 	c.active = false
 
-	return c, c.dispatch(cmdSuccessMsg(successMessage))
+	return c, dispatch(cmdSuccessMsg(successMessage))
 }
 
 func (c cmdInputModel) handleVLineCmd(cmdValue string) (cmdInputModel, tea.Cmd) {
@@ -169,11 +169,11 @@ func (c cmdInputModel) handleVLineCmd(cmdValue string) (cmdInputModel, tea.Cmd) 
 	} else if value == "false" {
 		enabled = false
 	} else {
-		return c, c.dispatch(cmdErrorMsg(errors.New("invalid value for v_line")))
+		return c, dispatch(cmdErrorMsg(errors.New("invalid value for v_line")))
 	}
 
 	if err := c.store.SetDefaultVLineStatus(enabled); err != nil {
-		return c, c.dispatch(cmdErrorMsg(err))
+		return c, dispatch(cmdErrorMsg(err))
 	}
 
 	successMessage := fmt.Sprint(
@@ -187,11 +187,8 @@ func (c cmdInputModel) handleVLineCmd(cmdValue string) (cmdInputModel, tea.Cmd) 
 	c.input.Value(&empty)
 	c.active = false
 
-	return c, c.dispatch(cmdSuccessMsg(successMessage))
-}
-
-func (c cmdInputModel) dispatch(msg tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		return msg
-	}
+	return c, tea.Batch(
+		dispatch(cmdSuccessMsg(successMessage)),
+		dispatch(cmdSetVLineMsg(enabled)),
+	)
 }

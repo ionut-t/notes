@@ -19,6 +19,8 @@ type cmdErrorMsg error
 
 type cmdAbortMsg struct{}
 
+type cmdSetVLineMsg bool
+
 type cmdNoteRenamedMsg struct {
 	note note.Note
 }

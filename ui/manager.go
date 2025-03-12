@@ -171,6 +171,9 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dispatchWindowSizeMsg(),
 		)
 
+	case cmdSetVLineMsg:
+		m.noteView.vLine = bool(msg)
+
 	case cmdNoteRenamedMsg:
 		note := msg.note
 		m.list.SetItem(m.list.Index(), item{
