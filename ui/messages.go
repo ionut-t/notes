@@ -18,6 +18,7 @@ type cmdSuccessMsg string
 type cmdErrorMsg error
 
 type cmdAbortMsg struct{}
+
 type cmdNoteRenamedMsg struct {
 	note note.Note
 }
