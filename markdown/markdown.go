@@ -142,9 +142,9 @@ func (m *Model) formatHeaderLine(line Line) string {
 	case 1:
 		return styles.Primary.Bold(true).Render(content)
 	case 2:
-		return styles.Info.Render(content)
+		return styles.Primary.Render(content)
 	case 3, 4, 5, 6:
-		return styles.Accent.Italic(true).Render(content)
+		return styles.Accent.Faint(true).Render(content)
 	default:
 		return content
 	}
