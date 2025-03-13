@@ -495,7 +495,7 @@ func (s *Store) loadNoteFromFile(path string) (Note, error) {
 		return Note{}, fmt.Errorf("failed to read note file: %w", err)
 	}
 
-	content := string(data)
+	content := strings.TrimSuffix(string(data), "\n")
 
 	name := strings.TrimSuffix(filepath.Base(path), ".md")
 
