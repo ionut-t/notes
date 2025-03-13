@@ -17,26 +17,26 @@ func RegisterCatppuccinStyles() {
 		chroma.Name:          "#cdd6f4", // Text
 
 		// Syntax elements
-		chroma.Comment:            "italic #6c7086", // Overlay0
-		chroma.CommentPreproc:     "#f5c2e7",        // Pink
-		chroma.Keyword:            "#cba6f7",        // Mauve
-		chroma.KeywordType:        "#f38ba8",        // Red
-		chroma.KeywordDeclaration: "#cba6f7",        // Mauve
-		chroma.Operator:           "#89dceb",        // Sky
-		chroma.OperatorWord:       "#cba6f7",        // Mauve
-		chroma.Punctuation:        "#cdd6f4",        // Text
-		chroma.String:             "#a6e3a1",        // Green
-		chroma.StringChar:         "#fab387",        // Peach
-		chroma.StringSymbol:       "#f9e2af",        // Yellow
-		chroma.Number:             "#fab387",        // Peach
-		chroma.NameBuiltin:        "#89b4fa",        // Blue
-		chroma.NameBuiltinPseudo:  "#89b4fa",        // Blue
-		chroma.NameClass:          "#f9e2af",        // Yellow
-		chroma.NameFunction:       "#89b4fa",        // Blue
-		chroma.NameVariable:       "#cdd6f4",        // Text
-		chroma.NameTag:            "#f38ba8",        // Red
-		chroma.NameAttribute:      "#f9e2af",        // Yellow
-		chroma.NameDecorator:      "#f5c2e7",        // Pink
+		chroma.Comment:            "#6c7086", // Overlay0
+		chroma.CommentPreproc:     "#f5c2e7", // Pink
+		chroma.Keyword:            "#cba6f7", // Mauve
+		chroma.KeywordType:        "#f38ba8", // Red
+		chroma.KeywordDeclaration: "#cba6f7", // Mauve
+		chroma.Operator:           "#89dceb", // Sky
+		chroma.OperatorWord:       "#cba6f7", // Mauve
+		chroma.Punctuation:        "#cdd6f4", // Text
+		chroma.String:             "#a6e3a1", // Green
+		chroma.StringChar:         "#fab387", // Peach
+		chroma.StringSymbol:       "#f9e2af", // Yellow
+		chroma.Number:             "#fab387", // Peach
+		chroma.NameBuiltin:        "#89b4fa", // Blue
+		chroma.NameBuiltinPseudo:  "#89b4fa", // Blue
+		chroma.NameClass:          "#f9e2af", // Yellow
+		chroma.NameFunction:       "#89b4fa", // Blue
+		chroma.NameVariable:       "#cdd6f4", // Text
+		chroma.NameTag:            "#f38ba8", // Red
+		chroma.NameAttribute:      "#f9e2af", // Yellow
+		chroma.NameDecorator:      "#f5c2e7", // Pink
 		// chroma.LiteralString:      "#a6e3a1",        // Green
 		chroma.GenericHeading:    "bold #cdd6f4", // Text bold
 		chroma.GenericSubheading: "bold #cdd6f4", // Text bold

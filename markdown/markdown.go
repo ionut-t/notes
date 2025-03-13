@@ -9,6 +9,8 @@ import (
 	"github.com/alecthomas/chroma/formatters"
 	"github.com/alecthomas/chroma/lexers"
 	chStyles "github.com/alecthomas/chroma/styles"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/styles"
 )
 
@@ -385,6 +387,13 @@ func (m *Model) Render() string {
 	var codeBlock []Line
 	inCodeBlock := false
 
+	var renderCodeBlockFence = func(lineNum int, line Line) {
+		codeLang := utils.Ternary(line.CodeLang == "", "", " "+line.CodeLang)
+		lineWidth := m.Width - lipgloss.Width(codeLang) - 6
+		lineWithNum := m.addLineNumber(lineNum, styles.Error.Render(strings.Repeat("─", lineWidth)+codeLang))
+		result.WriteString(lineWithNum + "\n")
+	}
+
 	for i, line := range m.Lines {
 		lineNum := i + 1
 
@@ -393,6 +402,7 @@ func (m *Model) Render() string {
 				// start of code block
 				inCodeBlock = true
 				codeBlock = []Line{}
+				renderCodeBlockFence(lineNum, line)
 			} else {
 				// end of code block - highlight and add to result
 				highlightedLines := m.highlightCodeBlock(codeBlock)
@@ -405,6 +415,7 @@ func (m *Model) Render() string {
 					}
 				}
 
+				renderCodeBlockFence(lineNum, line)
 				inCodeBlock = false
 				codeBlock = nil
 			}
