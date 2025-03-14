@@ -261,6 +261,11 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addNote.height = m.height
 			m.addNote.markAsIntegrated()
 			return m, nil
+
+		case "V":
+			if m.focusedView == listFocused {
+				m.noteView.vLine = !m.noteView.vLine
+			}
 		}
 	}
 
