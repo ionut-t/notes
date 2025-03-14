@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -150,18 +151,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == addContent {
 				m.view = addName
 				m.setHelp()
-
-				content := m.content.GetValue().(string)
-				name := strings.Split(content, "\n")[0]
-
-				if strings.HasPrefix(name, "#") {
-					name = strings.Trim(name, "#")
-					name = strings.Trim(name, " ")
-					name = strings.Join(strings.Split(name, " "), "-")
-					name = strings.ToLower(name)
-
-					m.filename.Value(&name)
-				}
+				m.setName()
 
 				m.filename.Focus()
 			}
@@ -290,5 +280,28 @@ func (m *AddModel) setHelp() {
 			keymap.Back,
 			keymap.ForceQuit,
 		}
+	}
+}
+
+func (m *AddModel) setName() {
+	currentName := m.filename.GetValue().(string)
+
+	if currentName != "" {
+		return
+	}
+
+	content := m.content.GetValue().(string)
+	name := strings.Split(content, "\n")[0]
+
+	if strings.HasPrefix(name, "#") {
+		name = strings.Trim(name, "#")
+		name = strings.TrimSpace(name)
+		// Replace any sequence of dashes, spaces, or # with a single space
+		re := regexp.MustCompile(`[#\s-]+`)
+		name = re.ReplaceAllString(name, " ")
+		name = strings.Join(strings.Fields(name), "-")
+		name = strings.ToLower(name)
+
+		m.filename.Value(&name)
 	}
 }
