@@ -41,18 +41,6 @@ func (r renameModel) View() string {
 
 func (r renameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !r.active {
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			if keyMsg.String() == "r" {
-				if note, ok := r.store.GetCurrentNote(); ok {
-					r.input.Prompt("Rename: ")
-					value := note.Name
-					r.input.Value(&value)
-					r.active = true
-					return r, dispatch(cmdInitMsg{})
-				}
-			}
-		}
-
 		return r, nil
 	}
 
@@ -107,4 +95,13 @@ func (r renameModel) handleRenameNote(msg tea.KeyMsg) (renameModel, tea.Cmd) {
 	}
 
 	return r, tea.Batch(cmds...)
+}
+
+func (r *renameModel) setActive() {
+	if note, ok := r.store.GetCurrentNote(); ok {
+		r.input.Prompt("Rename: ")
+		value := note.Name
+		r.input.Value(&value)
+		r.active = true
+	}
 }

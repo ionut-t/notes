@@ -220,12 +220,16 @@ func (m *NoteModel) setSize(width, height int) {
 	m.viewport.Width = width
 }
 
-func (m *NoteModel) updateContent(note note.Note) {
-	md := markdown.New(note.Content, max(m.width, 40))
-	md.SetLineNumbers(m.vLine)
+func (m *NoteModel) updateContent() {
+	if note, ok := m.store.GetCurrentNote(); ok {
+		md := markdown.New(note.Content, max(m.width, 40))
+		md.SetLineNumbers(m.vLine)
+		content := utils.Ternary(m.vLine, md.Render(), markdownPadding(md.Render()))
+		m.viewport.SetContent(content)
+	} else {
+		m.viewport.SetContent(` Press "n" to create a new note`)
+	}
 
-	content := utils.Ternary(m.vLine, md.Render(), markdownPadding(md.Render()))
-	m.viewport.SetContent(content)
 	m.viewport.Height = m.height
 	m.viewport.Width = m.width
 	m.viewport.SetYOffset(0)

@@ -57,6 +57,10 @@ func (s *Store) GetCurrentNote() (Note, bool) {
 	return Note{}, false
 }
 
+func (s *Store) MustGetCurrentNote() Note {
+	return s.notesDictionary[s.currentNoteName]
+}
+
 func (s *Store) SetCurrentNoteName(name string) {
 	s.currentNoteName = name
 }

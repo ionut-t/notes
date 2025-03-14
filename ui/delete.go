@@ -40,7 +40,7 @@ func (m deleteModel) View() string {
 		Padding(1, 2).
 		Render(fmt.Sprintf(
 			"Are you sure you want to delete %s",
-			styles.Accent.Background(bg).Render(m.getCurrentNoteName())+styles.Crust.Render("?"),
+			styles.Accent.Background(bg).Render(m.store.MustGetCurrentNote().Name)+styles.Crust.Render("?"),
 		))
 
 	options := styles.Text.
@@ -65,13 +65,6 @@ func (m deleteModel) View() string {
 func (m deleteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		if !m.active {
-			if keyMsg.String() == "ctrl+d" {
-				if _, ok := m.store.GetCurrentNote(); ok {
-					m.active = true
-					return m, dispatch(cmdInitMsg{})
-				}
-			}
-
 			return m, nil
 		}
 
@@ -104,10 +97,8 @@ func (m deleteModel) executeNoteDeletion() (deleteModel, tea.Cmd) {
 	)
 }
 
-func (m deleteModel) getCurrentNoteName() string {
-	if note, ok := m.store.GetCurrentNote(); ok {
-		return note.Name
+func (m *deleteModel) setActive() {
+	if _, ok := m.store.GetCurrentNote(); ok {
+		m.active = true
 	}
-
-	return ""
 }

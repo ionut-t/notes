@@ -39,15 +39,6 @@ func (c cmdInputModel) Init() tea.Cmd {
 
 func (c cmdInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !c.active {
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			if keyMsg.String() == ":" {
-				if _, ok := c.store.GetCurrentNote(); ok {
-					c.active = true
-					return c, dispatch(cmdInitMsg{})
-				}
-			}
-		}
-
 		return c, nil
 	}
 

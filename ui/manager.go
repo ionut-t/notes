@@ -221,8 +221,22 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
+		case "ctrl+d":
+			if !m.noteView.fullScreen {
+				m.delete.setActive()
+				return m, dispatch(cmdInitMsg{})
+			}
+
+		case "r":
+			m.renameInput.setActive()
+			return m, dispatch(cmdInitMsg{})
+
 		case "c":
 			return m.copyNoteContent()
+
+		case ":":
+			m.cmdInput.active = true
+			return m, dispatch(cmdInitMsg{})
 
 		case "l", "left":
 			if m.view == splitView {
@@ -268,7 +282,6 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if item, ok := filteredItems[0].(item); ok {
 					selected = item.title
 				}
-
 			}
 
 			if item, ok := m.list.SelectedItem().(item); ok {
@@ -278,10 +291,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.store.SetCurrentNoteName(selected)
 			width, height, _ := m.getAvailableSizes()
 			m.noteView.setSize(width-min(width/2, minListWidth), height)
-
-			if note, ok := m.store.GetCurrentNote(); ok {
-				m.noteView.updateContent(note)
-			}
+			m.noteView.updateContent()
 
 		case noteFocused:
 			if !m.help.FullView {
@@ -298,13 +308,13 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if !m.renameInput.active && !m.addNote.active {
+	if m.cmdInput.active {
 		cmdModel, cmd := m.cmdInput.Update(msg)
 		m.cmdInput = cmdModel.(cmdInputModel)
 		cmds = append(cmds, cmd)
 	}
 
-	if !m.cmdInput.active && !m.addNote.active {
+	if m.renameInput.active {
 		renameInput, cmd := m.renameInput.Update(msg)
 		m.renameInput = renameInput.(renameModel)
 		cmds = append(cmds, cmd)
@@ -314,7 +324,9 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		addNoteModel, cmd := m.addNote.Update(msg)
 		m.addNote = addNoteModel.(AddModel)
 		cmds = append(cmds, cmd)
-	} else {
+	}
+
+	if m.delete.active {
 		deleteM, cmd := m.delete.Update(msg)
 		m.delete = deleteM.(deleteModel)
 		cmds = append(cmds, cmd)
@@ -540,8 +552,9 @@ func (m ManagerModel) handleEditorClose(isNew bool) (ManagerModel, tea.Cmd) {
 
 	m.list.SetItems(processNotes(notes))
 
-	if note, ok := m.store.GetCurrentNote(); ok {
-		m.noteView.updateContent(note)
+	m.noteView.updateContent()
+
+	if _, ok := m.store.GetCurrentNote(); ok {
 		// there seems to be a bug in bubbletea that causes the filter to not
 		// preserve the selected item after the list is updated
 		// reset the filter until a better solution is found
@@ -584,9 +597,7 @@ func (m ManagerModel) handleSelection() (ManagerModel, tea.Cmd) {
 	m.noteView.setSize(m.width, m.height)
 	m.noteView.fullScreen = true
 
-	if note, ok := m.store.GetCurrentNote(); ok {
-		m.noteView.updateContent(note)
-	}
+	m.noteView.updateContent()
 
 	m.view = noteView
 	m.focusedView = noteFocused
@@ -612,19 +623,20 @@ func (m *ManagerModel) triggerNoteEditor() (bool, tea.Cmd) {
 }
 
 func (m ManagerModel) copyNoteContent() (ManagerModel, tea.Cmd) {
+	m.noteView.updateContent()
 
 	if note, ok := m.store.GetCurrentNote(); ok {
-		m.noteView.updateContent(note)
-
 		if err := m.store.CopyContent(note.Content); err != nil {
 			return m, dispatch(cmdErrorMsg(err))
 		}
+
+		m.successMessage = "Note copied to clipboard"
+		m.noteView.successMessage = m.successMessage
+
+		return m, dispatchClearMsg()
 	}
 
-	m.successMessage = "Note copied to clipboard"
-	m.noteView.successMessage = m.successMessage
-
-	return m, dispatchClearMsg()
+	return m, nil
 }
 
 func (m ManagerModel) dispatchWindowSizeMsg() tea.Cmd {
