@@ -69,20 +69,13 @@ func (s *Store) Create(name, content string) error {
 		UpdatedAt: time.Now(),
 	}
 
-	return s.saveNote(note)
-}
+	uniqueName, err := s.saveNote(note)
 
-func (s *Store) Update(name, content string) error {
-	note, ok := s.GetNote(name)
-
-	if !ok {
-		return fmt.Errorf("note %s not found", name)
+	if err == nil {
+		s.currentNoteName = uniqueName
 	}
 
-	note.Content = content
-	note.UpdatedAt = time.Now()
-
-	return s.saveNote(note)
+	return err
 }
 
 func (s *Store) DeleteCurrentNote() error {
@@ -414,24 +407,25 @@ func (s Store) getAllNoteFileNames() []string {
 }
 
 // SaveNote saves a note to the store
-func (s *Store) saveNote(note Note) error {
-	path := filepath.Join(s.storage, s.generateUniqueName(note.Name)+".md")
+func (s *Store) saveNote(note Note) (uniqueName string, err error) {
+	uniqueName = s.generateUniqueName(note.Name)
+	path := filepath.Join(s.storage, uniqueName+".md")
 
 	// Create the note content
 	content := strings.Trim(note.Content, "\n")
 
 	// check if directory exists
-	if _, err := os.Stat(s.storage); os.IsNotExist(err) {
-		if err := os.MkdirAll(s.storage, 0755); err != nil {
-			return fmt.Errorf("failed to create notes directory: %w", err)
+	if _, err = os.Stat(s.storage); os.IsNotExist(err) {
+		if err = os.MkdirAll(s.storage, 0755); err != nil {
+			return uniqueName, fmt.Errorf("failed to create notes directory: %w", err)
 		}
 	}
 
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write note file: %w", err)
+	if err = os.WriteFile(path, []byte(content), 0644); err != nil {
+		return uniqueName, fmt.Errorf("failed to write note file: %w", err)
 	}
 
-	return nil
+	return uniqueName, nil
 }
 
 func (s Store) generateUniqueName(name string) string {

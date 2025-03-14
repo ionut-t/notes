@@ -57,6 +57,7 @@ type ManagerModel struct {
 	successMessage string
 	cmdInput       cmdInputModel
 	delete         deleteModel
+	addNote        AddModel
 }
 
 func NewManager(store *note.Store) *ManagerModel {
@@ -108,11 +109,12 @@ func NewManager(store *note.Store) *ManagerModel {
 		keymap.Right,
 		keymap.Select,
 		keymap.QuickEditor,
+		keymap.New,
 		keymap.Rename,
 		keymap.Search,
 		keymap.VLine,
 		keymap.Copy,
-		keymap.CopyCodeBlock,
+		keymap.CopyLines,
 		keymap.Delete,
 		keymap.Quit,
 		keymap.Help,
@@ -144,7 +146,10 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.dispatchWindowSizeMsg()
 
 	case editorClosedMsg:
-		return m.handleEditorClose()
+		return m.handleEditorClose(false)
+
+	case noteAddedMsg:
+		return m.handleEditorClose(true)
 
 	case cmdNoteDeletedMsg:
 		m.list.RemoveItem(m.list.Index())
@@ -195,11 +200,11 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		if m.cmdInput.active || m.renameInput.active || m.delete.active {
+		if m.list.FilterState() == list.Filtering ||
+			m.cmdInput.active ||
+			m.renameInput.active ||
+			m.delete.active ||
+			m.addNote.active {
 			break
 		}
 
@@ -236,11 +241,16 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focusedView = listFocused
 				}
 			}
-		}
 
+		case "n":
+			m.addNote = NewAddModel(m.store)
+			m.addNote.height = m.height
+			m.addNote.markAsIntegrated()
+			return m, nil
+		}
 	}
 
-	if !m.cmdInput.active && !m.renameInput.active && !m.delete.active {
+	if !m.cmdInput.active && !m.renameInput.active && !m.delete.active && !m.addNote.active {
 		switch m.focusedView {
 		case listFocused:
 			var cmd tea.Cmd
@@ -288,26 +298,36 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if !m.renameInput.active {
+	if !m.renameInput.active && !m.addNote.active {
 		cmdModel, cmd := m.cmdInput.Update(msg)
 		m.cmdInput = cmdModel.(cmdInputModel)
 		cmds = append(cmds, cmd)
 	}
 
-	if !m.cmdInput.active {
+	if !m.cmdInput.active && !m.addNote.active {
 		renameInput, cmd := m.renameInput.Update(msg)
 		m.renameInput = renameInput.(renameModel)
 		cmds = append(cmds, cmd)
 	}
 
-	deleteM, cmd := m.delete.Update(msg)
-	m.delete = deleteM.(deleteModel)
-	cmds = append(cmds, cmd)
+	if m.addNote.active {
+		addNoteModel, cmd := m.addNote.Update(msg)
+		m.addNote = addNoteModel.(AddModel)
+		cmds = append(cmds, cmd)
+	} else {
+		deleteM, cmd := m.delete.Update(msg)
+		m.delete = deleteM.(deleteModel)
+		cmds = append(cmds, cmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }
 
 func (m ManagerModel) View() string {
+	if m.addNote.active {
+		return m.addNote.View()
+	}
+
 	switch m.view {
 	case listView:
 		if m.delete.active {
@@ -443,6 +463,7 @@ func (m ManagerModel) statusBarView() string {
 			keymap.Rename,
 			keymap.Search,
 			keymap.Delete,
+			keymap.New,
 			keymap.Quit,
 			keymap.Help,
 		}
@@ -510,7 +531,7 @@ func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 	}
 }
 
-func (m ManagerModel) handleEditorClose() (ManagerModel, tea.Cmd) {
+func (m ManagerModel) handleEditorClose(isNew bool) (ManagerModel, tea.Cmd) {
 	notes, err := m.store.LoadNotes()
 
 	if err != nil {
@@ -527,7 +548,7 @@ func (m ManagerModel) handleEditorClose() (ManagerModel, tea.Cmd) {
 		m.list.ResetFilter()
 	}
 
-	if m.store.IsFirstNote() {
+	if m.store.IsFirstNote() || isNew {
 		m.list.ResetSelected()
 	}
 

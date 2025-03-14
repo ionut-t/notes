@@ -33,16 +33,16 @@ type AddModel struct {
 	width, height int
 	err           error
 	success       bool
-
 	view          addView
 	content       *huh.Text
 	filename      *huh.Input
 	filenameError error
-
-	help help.Model
+	help          help.Model
+	standalone    bool
+	active        bool
 }
 
-func NewAddModel(store *note.Store) *AddModel {
+func NewAddModel(store *note.Store) AddModel {
 	content := huh.NewText().
 		Key("content").
 		Placeholder("Write your note here").
@@ -74,13 +74,24 @@ func NewAddModel(store *note.Store) *AddModel {
 	helpMenu := help.New()
 	helpMenu.SetKeyMap(keymap.DefaultKeyMap)
 
-	return &AddModel{
-		store:    store,
-		view:     addContent,
-		content:  content,
-		filename: fileName,
-		help:     helpMenu,
+	m := AddModel{
+		store:      store,
+		view:       addContent,
+		content:    content,
+		filename:   fileName,
+		help:       helpMenu,
+		standalone: true,
+		active:     true,
 	}
+
+	m.setHelp()
+
+	return m
+}
+
+func (m *AddModel) markAsIntegrated() {
+	m.standalone = false
+	m.content.WithHeight(max(m.height-4, 10))
 }
 
 func (m AddModel) Init() tea.Cmd {
@@ -117,6 +128,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if m.view == addName {
 				m.view = addContent
+				m.setHelp()
 				m.content.Focus()
 
 				if _, err := validateNoteName(m.filename); err == nil {
@@ -124,13 +136,20 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			} else {
-				m.view = abbortAdd
-				return m, tea.Quit
+				m.active = false
+
+				if m.standalone {
+					m.view = abbortAdd
+					return m, tea.Quit
+				}
+
+				return m, dispatch(cmdAbortMsg{})
 			}
 
 		case "alt+enter":
 			if m.view == addContent {
 				m.view = addName
+				m.setHelp()
 
 				content := m.content.GetValue().(string)
 				name := strings.Split(content, "\n")[0]
@@ -164,10 +183,20 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				if err := m.store.Create(noteName, content); err != nil {
 					m.err = err
-				} else {
-					m.success = true
 
-					return m, tea.Quit
+					if !m.standalone {
+						return m, dispatch(cmdErrorMsg(err))
+					}
+				} else {
+					m.active = false
+
+					if m.standalone {
+						m.success = true
+
+						return m, tea.Quit
+					}
+
+					return m, dispatch(noteAddedMsg{})
 				}
 			}
 
@@ -224,20 +253,8 @@ func (m AddModel) getView() string {
 
 	switch m.view {
 	case addContent:
-		m.help.Keys.ShortHelpBindings = []key.Binding{
-			keymap.NewLine,
-			keymap.Editor,
-			keymap.Continue,
-			keymap.QuitForm,
-		}
 		return m.content.View() + "\n\n" + m.help.View()
 	case addName:
-		m.help.Keys.ShortHelpBindings = []key.Binding{
-			keymap.Save,
-			keymap.Back,
-			keymap.Quit,
-		}
-
 		if err := m.filenameError; err != nil {
 			return m.filename.View() + "\n" + styles.Error.Render(err.Error()) + "\n\n" + m.help.View()
 		}
@@ -245,5 +262,33 @@ func (m AddModel) getView() string {
 		return m.filename.View() + "\n\n" + m.help.View()
 	default:
 		return ""
+	}
+}
+
+func (m *AddModel) setHelp() {
+	switch m.view {
+	case addContent:
+		if m.standalone {
+			m.help.Keys.ShortHelpBindings = []key.Binding{
+				keymap.NewLine,
+				keymap.Editor,
+				keymap.Continue,
+				keymap.Back,
+			}
+		} else {
+			m.help.Keys.ShortHelpBindings = []key.Binding{
+				keymap.NewLine,
+				keymap.Editor,
+				keymap.Continue,
+				keymap.Quit,
+			}
+		}
+
+	case addName:
+		m.help.Keys.ShortHelpBindings = []key.Binding{
+			keymap.Save,
+			keymap.Back,
+			keymap.ForceQuit,
+		}
 	}
 }

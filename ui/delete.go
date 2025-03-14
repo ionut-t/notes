@@ -70,9 +70,9 @@ func (m deleteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.active = true
 					return m, dispatch(cmdInitMsg{})
 				}
-
-				return m, nil
 			}
+
+			return m, nil
 		}
 
 		switch keyMsg.String() {

@@ -57,7 +57,8 @@ func NewNoteModel(store *note.Store, width, height int) NoteModel {
 		keymap.Rename,
 		keymap.VLine,
 		keymap.Copy,
-		keymap.CopyCodeBlock,
+		keymap.CopyLines,
+		keymap.New,
 		keymap.Quit,
 		keymap.Help,
 	}

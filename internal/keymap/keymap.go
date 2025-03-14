@@ -28,7 +28,7 @@ var Right = key.NewBinding(
 
 var Select = key.NewBinding(
 	key.WithKeys("enter"),
-	key.WithHelp("enter", "view note"),
+	key.WithHelp("enter", "full screen"),
 )
 
 var NewLine = key.NewBinding(
@@ -51,6 +51,16 @@ var Quit = key.NewBinding(
 	key.WithHelp("esc/q", "quit"),
 )
 
+var QuitForm = key.NewBinding(
+	key.WithKeys("ctrl+c", "esc"),
+	key.WithHelp("ctrl+c/esc", "quit"),
+)
+
+var ForceQuit = key.NewBinding(
+	key.WithKeys("ctrl+c"),
+	key.WithHelp("ctrl+c", "quit"),
+)
+
 var Help = key.NewBinding(
 	key.WithKeys("?"),
 	key.WithHelp("?", "help"),
@@ -64,11 +74,6 @@ var Search = key.NewBinding(
 var ExitSearch = key.NewBinding(
 	key.WithKeys("esc"),
 	key.WithHelp("esc", "exit search"),
-)
-
-var QuitForm = key.NewBinding(
-	key.WithKeys("ctrl+c", "esc"),
-	key.WithHelp("ctrl+c/esc", "Quit"),
 )
 
 var Editor = key.NewBinding(
@@ -106,7 +111,7 @@ var Copy = key.NewBinding(
 	key.WithHelp("c", "copy note to clipboard"),
 )
 
-var CopyCodeBlock = key.NewBinding(
+var CopyLines = key.NewBinding(
 	key.WithKeys(":"),
 	key.WithHelp(":co", `copy lines to clipboard
 						 Examples:
@@ -123,6 +128,11 @@ var CopyCodeBlock = key.NewBinding(
 var VLine = key.NewBinding(
 	key.WithKeys("V"),
 	key.WithHelp("V", "toggle line numbers"),
+)
+
+var New = key.NewBinding(
+	key.WithKeys("n"),
+	key.WithHelp("n", "new note"),
 )
 
 type Model struct {
