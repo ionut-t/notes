@@ -392,24 +392,6 @@ func ParseCopyLinesCommand(cmd string) (int, int, error) {
 	return 0, 0, fmt.Errorf("invalid command format: %s", cmd)
 }
 
-func (s Store) getAllNoteFileNames() []string {
-	var notes []Note
-
-	if loadedNotes, err := s.LoadNotes(); err == nil {
-		notes = loadedNotes
-	} else {
-		notes = s.notes
-	}
-
-	fileNames := []string{}
-	for _, note := range notes {
-		name := strings.ToLower(strings.TrimSuffix(note.Name, ".md"))
-		fileNames = append(fileNames, name)
-	}
-
-	return fileNames
-}
-
 // SaveNote saves a note to the store
 func (s *Store) saveNote(note Note) (uniqueName string, err error) {
 	uniqueName = s.generateUniqueName(note.Name)
@@ -433,25 +415,11 @@ func (s *Store) saveNote(note Note) (uniqueName string, err error) {
 }
 
 func (s Store) generateUniqueName(name string) string {
-	noteFileNames := s.getAllNoteFileNames()
-
-	if len(noteFileNames) == 0 {
-		return name
-	}
-
 	originalName := name
 	counter := 1
 
 	for {
-		duplicate := false
-		for _, n := range noteFileNames {
-			if n == strings.ToLower(name) {
-				duplicate = true
-				break
-			}
-		}
-
-		if !duplicate {
+		if _, exists := s.notesDictionary[strings.ToLower(name)]; !exists {
 			break
 		}
 
