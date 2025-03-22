@@ -417,7 +417,6 @@ func (m ManagerModel) getSplitView() string {
 		)
 	}
 
-	// Add status bar below the joined content
 	renderedView := viewPadding.Render(lipgloss.JoinVertical(
 		lipgloss.Left,
 		joinedContent,
