@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
@@ -60,15 +62,14 @@ func (c cmdInputModel) View() string {
 func (c cmdInputModel) handleCmdRunner(msg tea.KeyMsg) (cmdInputModel, tea.Cmd) {
 	c.input.Focus()
 
-	keyMsg := tea.KeyMsg(msg).String()
-	switch keyMsg {
-	case "esc":
+	if key.Matches(msg, keymap.Cancel) {
 		c.active = false
 		empty := ""
 		c.input.Value(&empty)
 		return c, dispatch(cmdAbortMsg{})
+	}
 
-	case "enter":
+	if key.Matches(msg, keymap.Save) {
 		cmdValue := c.input.GetValue().(string)
 		cmdValue = strings.TrimSpace(cmdValue)
 

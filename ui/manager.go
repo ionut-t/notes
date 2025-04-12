@@ -194,9 +194,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.noteView.error = nil
 
 	case tea.KeyMsg:
-		keyMsg := tea.KeyMsg(msg).String()
-
-		if keyMsg == "ctrl+c" {
+		if key.Matches(msg, keymap.ForceQuit) {
 			return m, tea.Quit
 		}
 
@@ -208,37 +206,36 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 
-		switch keyMsg {
-
-		case "esc", "q":
+		switch {
+		case key.Matches(msg, keymap.Quit):
 			return m.handleQuit()
 
-		case "enter":
+		case key.Matches(msg, keymap.Select):
 			return m.handleSelection()
 
-		case "e":
+		case key.Matches(msg, keymap.QuickEditor):
 			if ok, cmd := m.triggerNoteEditor(); ok {
 				return m, cmd
 			}
 
-		case "ctrl+d":
+		case key.Matches(msg, keymap.Delete):
 			if !m.noteView.fullScreen {
 				m.delete.setActive()
 				return m, dispatch(cmdInitMsg{})
 			}
 
-		case "r":
+		case key.Matches(msg, keymap.Rename):
 			m.renameInput.setActive()
 			return m, dispatch(cmdInitMsg{})
 
-		case "c":
+		case key.Matches(msg, keymap.Copy):
 			return m.copyNoteContent()
 
-		case ":":
+		case key.Matches(msg, keymap.Command):
 			m.cmdInput.active = true
 			return m, dispatch(cmdInitMsg{})
 
-		case "l", "left":
+		case key.Matches(msg, keymap.Left):
 			if m.view == splitView {
 				if m.focusedView == listFocused {
 					m.focusedView = noteFocused
@@ -247,7 +244,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-		case "right", "h":
+		case key.Matches(msg, keymap.Right):
 			if m.view == splitView {
 				if m.focusedView == listFocused {
 					m.focusedView = noteFocused
@@ -256,13 +253,13 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-		case "n":
+		case key.Matches(msg, keymap.New):
 			m.addNote = NewAddModel(m.store)
 			m.addNote.height = m.height
 			m.addNote.markAsIntegrated()
 			return m, nil
 
-		case "V":
+		case key.Matches(msg, keymap.VLine):
 			if m.focusedView == listFocused {
 				m.noteView.vLine = !m.noteView.vLine
 			}

@@ -3,8 +3,10 @@ package ui
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
@@ -57,14 +59,13 @@ func (r renameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (r renameModel) handleRenameNote(msg tea.KeyMsg) (renameModel, tea.Cmd) {
 	var cmds []tea.Cmd
-	keyMsg := tea.KeyMsg(msg).String()
 
 	inputModel, cmd := r.input.Update(msg)
 	r.input = inputModel.(*huh.Input)
 	cmds = append(cmds, cmd)
 
-	switch keyMsg {
-	case "enter":
+	switch {
+	case key.Matches(msg, keymap.Save):
 		newName, err := validateNoteName(r.input)
 
 		if err != nil {
@@ -87,7 +88,7 @@ func (r renameModel) handleRenameNote(msg tea.KeyMsg) (renameModel, tea.Cmd) {
 			dispatch(cmdSuccessMsg(fmt.Sprintf("Note renamed to \"%s\"", note.Name))),
 		)
 
-	case "esc":
+	case key.Matches(msg, keymap.Cancel):
 		r.active = false
 		empty := ""
 		r.input.Value(&empty)

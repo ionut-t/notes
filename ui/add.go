@@ -66,10 +66,7 @@ func NewAddModel(store *note.Store) AddModel {
 		Text: huh.TextKeyMap{
 			NewLine: keymap.NewLine,
 		},
-		Quit: key.NewBinding(
-			key.WithKeys("ctrl+c", "esc"),
-			key.WithHelp("ctrl+c/esc", "Quit"),
-		),
+		Quit: keymap.QuitForm,
 	})
 
 	helpMenu := help.New()
@@ -121,12 +118,12 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
+		switch {
+		case key.Matches(msg, keymap.ForceQuit):
 			m.view = abbortAdd
 			return m, tea.Quit
 
-		case "esc":
+		case key.Matches(msg, keymap.Cancel):
 			if m.view == addName {
 				m.view = addContent
 				m.setHelp()
@@ -147,7 +144,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, dispatch(cmdAbortMsg{})
 			}
 
-		case "alt+enter":
+		case key.Matches(msg, keymap.Continue):
 			if m.view == addContent {
 				m.view = addName
 				m.setHelp()
@@ -156,7 +153,23 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filename.Focus()
 			}
 
-		case "enter":
+		case key.Matches(msg, keymap.Editor):
+			if m.view == addName {
+				break
+			}
+
+			tmpFile, _ := os.CreateTemp(os.TempDir(), "*.md")
+			tmpFile.WriteString(m.content.GetValue().(string))
+
+			execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), tmpFile.Name()), func(error) tea.Msg {
+				content, _ := os.ReadFile(tmpFile.Name())
+				_ = os.Remove(tmpFile.Name())
+				return updateValueMsg(content)
+			})
+
+			return m, execCmd
+
+		case key.Matches(msg, keymap.Save):
 			if m.view == addName {
 				content := m.content.GetValue().(string)
 
@@ -189,23 +202,6 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, dispatch(noteAddedMsg{})
 				}
 			}
-
-		case "ctrl+e":
-			if m.view == addName {
-				break
-			}
-
-			tmpFile, _ := os.CreateTemp(os.TempDir(), "*.md")
-
-			tmpFile.WriteString(m.content.GetValue().(string))
-
-			execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), tmpFile.Name()), func(error) tea.Msg {
-				content, _ := os.ReadFile(tmpFile.Name())
-				_ = os.Remove(tmpFile.Name())
-				return updateValueMsg(content)
-			})
-
-			return m, execCmd
 		}
 	}
 

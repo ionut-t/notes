@@ -111,10 +111,7 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 	case tea.KeyMsg:
-		keyMsg := tea.KeyMsg(msg).String()
-
-		switch keyMsg {
-		case "V":
+		if key.Matches(msg, keymap.VLine) {
 			if note, ok := m.store.GetCurrentNote(); ok {
 				m.vLine = !m.vLine
 				m.markdown = markdown.New(note.Content, m.width)

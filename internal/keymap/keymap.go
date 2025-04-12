@@ -8,22 +8,22 @@ import (
 
 var Up = key.NewBinding(
 	key.WithKeys("up", "k"),
-	key.WithHelp("↑/k", "up"),
+	key.WithHelp("↑ / k", "up"),
 )
 
 var Down = key.NewBinding(
 	key.WithKeys("down", "j"),
-	key.WithHelp("↓/j", "down"),
+	key.WithHelp("↓ / j", "down"),
 )
 
 var Left = key.NewBinding(
 	key.WithKeys("left", "h"),
-	key.WithHelp("←/h", "left"),
+	key.WithHelp("← / h", "left"),
 )
 
 var Right = key.NewBinding(
 	key.WithKeys("right", "l"),
-	key.WithHelp("→/l", "right"),
+	key.WithHelp("→ / l", "right"),
 )
 
 var Select = key.NewBinding(
@@ -48,12 +48,12 @@ var Cancel = key.NewBinding(
 
 var Quit = key.NewBinding(
 	key.WithKeys("esc", "q"),
-	key.WithHelp("esc/q", "quit"),
+	key.WithHelp("esc / q", "quit"),
 )
 
 var QuitForm = key.NewBinding(
 	key.WithKeys("ctrl+c", "esc"),
-	key.WithHelp("ctrl+c/esc", "quit"),
+	key.WithHelp("ctrl+c / esc", "quit"),
 )
 
 var ForceQuit = key.NewBinding(
@@ -87,8 +87,8 @@ var QuickEditor = key.NewBinding(
 )
 
 var Continue = key.NewBinding(
-	key.WithKeys("alt+enter"),
-	key.WithHelp("alt/option+enter", "continue"),
+	key.WithKeys("alt+enter", "ctrl+s"),
+	key.WithHelp("alt+enter / ctrl+s", "continue"),
 )
 
 var Save = key.NewBinding(
@@ -123,6 +123,11 @@ var CopyLines = key.NewBinding(
 						 co 20 > -1 (copy lines 20 to the end)
 						 co 20 < -1 (copy lines 1 to 20)`,
 	),
+)
+
+var Command = key.NewBinding(
+	key.WithKeys(":"),
+	key.WithHelp(":", "enter command"),
 )
 
 var VLine = key.NewBinding(
