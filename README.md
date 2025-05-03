@@ -4,7 +4,12 @@ A simple, lightweight command-line notes manager written in Go.
 
 ## Features
 
-- Create, view, and manage markdown notes from your terminal
+- Create note
+  ![Add note demo](./add-note-demo.gif)
+
+- View and manage notes
+  ![Notes manager demo](./manager-demo.gif)
+
 - Customizable storage location and editor
 
 ## Installation
