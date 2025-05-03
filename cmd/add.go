@@ -25,7 +25,8 @@ func newAddCmd() *cobra.Command {
 }
 
 func runAddUI(store *note.Store) {
-	p := tea.NewProgram(ui.NewAddModel(store) /* , tea.WithAltScreen() */)
+	store.LoadNotes()
+	p := tea.NewProgram(ui.NewAddModel(store))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running UI: %v\n", err)
 		os.Exit(1)
