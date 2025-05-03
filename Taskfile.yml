@@ -23,3 +23,9 @@ tasks:
       - task build
       - ./bin/notes config
     silent: true
+
+  install:
+    cmds:
+      - go build
+      - go install
+  
