@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # Needed for uploading release assets
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for git commands
+        
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+          
+      - name: Set release version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          
+          # Get commit hash
+          COMMIT=$(git rev-parse --short HEAD)
+          # Get current date
+          BUILD_DATE=$(date -u +%d/%m/%Y)
+          # Define build flags
+          LDFLAGS="-X 'github.com/ionut-t/notes/cmd.version=${{ env.VERSION }}' -X 'github.com/ionut-t/notes/cmd.commit=$COMMIT' -X 'github.com/ionut-t/notes/cmd.date=$BUILD_DATE'"
+          
+          # Build for macOS (Apple Silicon)
+          GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/notes-darwin-arm64
+
+          # Build for macOS (Intel)
+          GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-darwin-amd64
+                    
+          # Build for Linux (64-bit)
+          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-linux-amd64
+          
+          # Build for Windows (64-bit)
+          GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-windows-amd64.exe
+          
+          # Make binaries executable
+          chmod +x dist/*
+          
+          # Create checksums
+          cd dist
+          sha256sum * > checksums.txt
+          cd ..
+      
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') }}
+          files: |
+            dist/*
+          body: |
+            # notes ${{ env.VERSION }}
+            
+            ## What's New
+            
+            <!-- Add release notes here -->
+            
+            ## Installation
+
+            ### macOS (Apple Silicon)
+            ```bash
+            curl -L https://github.com/ionut-t/notes/releases/download/${{ env.VERSION }}/notes-darwin-arm64 -o notes && chmod +x notes
+            ```
+            
+            ### macOS (Intel)
+            ```bash
+            curl -L https://github.com/ionut-t/notes/releases/download/${{ env.VERSION }}/notes-darwin-amd64 -o notes && chmod +x notes
+            ```
+            
+            ### Linux
+            ```bash
+            curl -L https://github.com/ionut-t/notes/releases/download/${{ env.VERSION }}/notes-linux-amd64 -o notes && chmod +x notes
+            ```
+
+            ### For macOS and Linux
+            ```bash
+            sudo mv notes /usr/local/bin/
+            # or
+            mkdir -p ~/bin && mv notes ~/bin/ && echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+            source ~/.zshrc
+            ```
+            
+            ### Windows
+            Download the binary from the assets below.

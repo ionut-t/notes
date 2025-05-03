@@ -18,6 +18,8 @@ A simple, lightweight command-line notes manager written in Go.
 go install github.com/ionut-t/notes@latest
 ```
 
+Or install the binary from the [Releases page](https://github.com/ionut-t/notes/releases).
+
 ## Usage
 
 ### Basic Commands
