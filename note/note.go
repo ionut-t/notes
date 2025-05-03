@@ -8,11 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -430,30 +428,30 @@ func (s Store) generateUniqueName(name string) string {
 	return name
 }
 
-func getCreationTime(filePath string) (time.Time, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return time.Time{}, err
-	}
+// func getCreationTime(filePath string) (time.Time, error) {
+// 	info, err := os.Stat(filePath)
+// 	if err != nil {
+// 		return time.Time{}, err
+// 	}
 
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return time.Time{}, fmt.Errorf("failed to get raw syscall.Stat_t")
-	}
+// 	stat, ok := info.Sys().(*syscall.Stat_t)
+// 	if !ok {
+// 		return time.Time{}, fmt.Errorf("failed to get raw syscall.Stat_t")
+// 	}
 
-	// Different OS has different fields in syscall.Stat_t
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS has Birthtimespec for creation time
-		return time.Unix(int64(stat.Birthtimespec.Sec), int64(stat.Birthtimespec.Nsec)), nil
-	case "windows":
-		// Windows implementation would be different and should use syscall.GetFileTime
-		return time.Time{}, fmt.Errorf("use separate Windows implementation")
-	default:
-		// Linux generally doesn't store true creation time, using Ctim (status change time)
-		return time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec)), nil
-	}
-}
+// 	// Different OS has different fields in syscall.Stat_t
+// 	switch runtime.GOOS {
+// 	case "darwin":
+// 		// macOS has Birthtimespec for creation time
+// 		return time.Unix(int64(stat.Birthtimespec.Sec), int64(stat.Birthtimespec.Nsec)), nil
+// 	case "windows":
+// 		// Windows implementation would be different and should use syscall.GetFileTime
+// 		return time.Time{}, fmt.Errorf("use separate Windows implementation")
+// 	default:
+// 		// Linux generally doesn't store true creation time, using Ctim (status change time)
+// 		return time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec)), nil
+// 	}
+// }
 
 func (s *Store) loadNoteFromFile(path string) (Note, error) {
 	data, err := os.ReadFile(path)
@@ -472,19 +470,20 @@ func (s *Store) loadNoteFromFile(path string) (Note, error) {
 		return Note{}, err
 	}
 
-	createdAt, err := getCreationTime(path)
+	// Creation time is not supported on all platforms
+	// TODO: Investigate if we can get the creation time on all platforms
+	// createdAt, err := getCreationTime(path)
 
-	if err != nil {
-		fmt.Printf("Error getting file creation time: %v\n", err)
-		return Note{}, err
-	}
+	// if err != nil {
+	// 	fmt.Printf("Error getting file creation time: %v\n", err)
+	// 	return Note{}, err
+	// }
 
 	updatedAt := fileInfo.ModTime()
 
 	return Note{
 		Name:      name,
 		Content:   content,
-		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 		Byte:      data,
 	}, nil

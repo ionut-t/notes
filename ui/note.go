@@ -156,7 +156,7 @@ func (m NoteModel) statusBarView() string {
 
 	name := styles.Primary.Background(bg).Render(note.Name)
 
-	modifiedDate := styles.Accent.Background(bg).Render("Last Modified " + note.CreatedAt.Format("02/01/2006 15:04"))
+	modifiedDate := styles.Accent.Background(bg).Render("Last Modified " + note.UpdatedAt.Format("02/01/2006 15:04"))
 
 	noteInfo := styles.Surface0.Padding(0, 1).Render(
 		name + separator + modifiedDate,
