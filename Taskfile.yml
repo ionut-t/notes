@@ -1,0 +1,25 @@
+version: '3'
+
+tasks:
+  build:
+    cmds:
+      - go build -o bin/notes
+    silent: true
+
+  run:
+    cmds:
+      - task build
+      - ./bin/notes
+    silent: true
+
+  run-add:
+    cmds:
+      - task build
+      - ./bin/notes add
+    silent: true
+
+  run-config:
+    cmds:
+      - task build
+      - ./bin/notes config
+    silent: true
