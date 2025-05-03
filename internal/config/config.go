@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const notesDir = ".notes"
+
 func getDefaultEditor() string {
 	if editor := os.Getenv("EDITOR"); editor != "" {
 		return editor
@@ -43,13 +45,13 @@ func GetStorage() string {
 		os.Exit(1)
 	}
 
-	notesDir := filepath.Join(home, ".notes")
-	if err := os.MkdirAll(notesDir, 0755); err != nil {
+	dir := filepath.Join(home, notesDir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Println("Error creating directory:", err)
 		os.Exit(1)
 	}
 
-	return notesDir
+	return dir
 }
 
 func GetVLineEnabledByDefault() bool {
@@ -92,17 +94,17 @@ func InitialiseConfigFile() (string, error) {
 			return "", err
 		}
 
-		notesDir := filepath.Join(home, ".notes")
-		if err := os.MkdirAll(notesDir, 0755); err != nil {
+		dir := filepath.Join(home, notesDir)
+		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", err
 		}
 
-		configPath = filepath.Join(notesDir, ".config.toml")
+		configPath = filepath.Join(dir, ".config.toml")
 		viper.SetConfigFile(configPath)
 
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
 			viper.SetDefault("editor", GetEditor())
-			viper.SetDefault("storage", notesDir)
+			viper.SetDefault("storage", dir)
 			viper.SetDefault("v_line", false)
 
 			if err := viper.WriteConfig(); err != nil {
@@ -118,4 +120,8 @@ func InitialiseConfigFile() (string, error) {
 	}
 
 	return configPath, nil
+}
+
+func GetConfigFilePath() string {
+	return viper.ConfigFileUsed()
 }

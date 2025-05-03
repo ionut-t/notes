@@ -16,12 +16,7 @@ func configCmd() *cobra.Command {
 		Short: "Manage configuration",
 		Long:  `Manage the configuration of the notes tool.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			configPath, err := config.InitialiseConfigFile()
-
-			if err != nil {
-				fmt.Println("Error initialising config file:", err)
-				os.Exit(1)
-			}
+			configPath := config.GetConfigFilePath()
 
 			// Check if flags were provided
 			editorFlag, _ := cmd.Flags().GetString("editor")
