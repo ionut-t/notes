@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
+	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
@@ -27,20 +28,26 @@ const (
 	abbortAdd
 )
 
+var addViewBorder = lipgloss.Border{
+	Left: "│",
+}
+
 type updateValueMsg []byte
 
 type AddModel struct {
-	store         *note.Store
-	width, height int
-	err           error
-	success       bool
-	view          addView
-	content       *huh.Text
-	filename      *huh.Input
-	filenameError error
-	help          help.Model
-	standalone    bool
-	active        bool
+	store            *note.Store
+	width, height    int
+	err              error
+	success          bool
+	view             addView
+	content          *huh.Text
+	filename         *huh.Input
+	confirmation     *huh.Confirm
+	filenameError    error
+	help             help.Model
+	standalone       bool
+	active           bool
+	showConfirmation bool
 }
 
 func NewAddModel(store *note.Store) AddModel {
@@ -56,6 +63,11 @@ func NewAddModel(store *note.Store) AddModel {
 		Placeholder("Enter a name for your note").
 		Validate(huh.ValidateLength(1, 20))
 
+	confirmation := huh.NewConfirm().
+		Title("You have unsaved changes. Are you sure you want to quit?").
+		Affirmative("Yes").
+		Negative("No")
+
 	fileName.WithTheme(styles.ThemeCatppuccin())
 	content.WithTheme(styles.ThemeCatppuccin())
 	content.WithWidth(80)
@@ -69,17 +81,24 @@ func NewAddModel(store *note.Store) AddModel {
 		Quit: keymap.QuitForm,
 	})
 
+	confirmation.WithKeyMap(&huh.KeyMap{
+		Confirm: huh.NewDefaultKeyMap().Confirm,
+	})
+
+	confirmation.WithTheme(styles.ThemeCatppuccin())
+
 	helpMenu := help.New()
 	helpMenu.SetKeyMap(keymap.DefaultKeyMap)
 
 	m := AddModel{
-		store:      store,
-		view:       addContent,
-		content:    content,
-		filename:   fileName,
-		help:       helpMenu,
-		standalone: true,
-		active:     true,
+		store:        store,
+		view:         addContent,
+		content:      content,
+		filename:     fileName,
+		confirmation: confirmation,
+		help:         helpMenu,
+		standalone:   true,
+		active:       true,
 	}
 
 	m.setHelp()
@@ -89,7 +108,7 @@ func NewAddModel(store *note.Store) AddModel {
 
 func (m *AddModel) markAsIntegrated() {
 	m.standalone = false
-	m.content.WithHeight(max(m.height-4, 10))
+	m.setContentHeight()
 }
 
 func (m AddModel) Init() tea.Cmd {
@@ -124,6 +143,19 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case key.Matches(msg, keymap.Cancel):
+			if m.showConfirmation {
+				m.showConfirmation = false
+				m.content.Focus()
+				break
+			}
+
+			if m.hasChanges() && m.view == addContent {
+				m.showConfirmation = true
+				m.content.Blur()
+				m.confirmation.Focus()
+				break
+			}
+
 			if m.view == addName {
 				m.view = addContent
 				m.setHelp()
@@ -170,6 +202,28 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, execCmd
 
 		case key.Matches(msg, keymap.Save):
+			if m.showConfirmation {
+				confirmed := m.confirmation.GetValue().(bool)
+
+				if confirmed {
+					m.active = false
+					m.showConfirmation = false
+
+					if m.standalone {
+						m.view = abbortAdd
+						return m, tea.Quit
+					}
+
+					return m, dispatch(cmdAbortMsg{})
+				}
+
+				m.showConfirmation = false
+
+				m.content.Focus()
+
+				break
+			}
+
 			if m.view == addName {
 				content := m.content.GetValue().(string)
 
@@ -202,6 +256,29 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, dispatch(noteAddedMsg{})
 				}
 			}
+
+		case key.Matches(msg, keymap.Accept):
+			if m.showConfirmation {
+				m.showConfirmation = false
+
+				m.active = false
+				m.showConfirmation = false
+
+				if m.standalone {
+					m.view = abbortAdd
+					return m, tea.Quit
+				}
+
+				return m, dispatch(cmdAbortMsg{})
+			}
+
+		case key.Matches(msg, keymap.Reject):
+			if m.showConfirmation {
+				m.showConfirmation = false
+				m.content.Focus()
+
+				return m, nil
+			}
 		}
 	}
 
@@ -217,6 +294,16 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	if m.showConfirmation {
+		confirmation, cmd := m.confirmation.Update(msg)
+		m.confirmation = confirmation.(*huh.Confirm)
+		cmds = append(cmds, cmd)
+	}
+
+	if !m.standalone {
+		m.setContentHeight()
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -225,7 +312,15 @@ func (m AddModel) View() string {
 		return ""
 	}
 
-	return lipgloss.NewStyle().Width(m.width).Padding(1, 2).Render(m.getView())
+	pY := utils.Ternary(m.standalone, 1, 2)
+
+	return lipgloss.NewStyle().
+		Border(addViewBorder).
+		BorderForeground(styles.Accent.GetForeground()).
+		Width(m.width-4).
+		Padding(pY, 2).
+		Margin(0, 1).
+		Render(m.getView())
 }
 
 func (m AddModel) getView() string {
@@ -237,15 +332,17 @@ func (m AddModel) getView() string {
 		return styles.Success.Render("Note created successfully!")
 	}
 
+	footer := utils.Ternary(m.showConfirmation, m.confirmation.View(), m.help.View())
+
 	switch m.view {
 	case addContent:
-		return m.content.View() + "\n\n" + m.help.View()
+		return m.content.View() + "\n\n" + footer
 	case addName:
 		if err := m.filenameError; err != nil {
-			return m.filename.View() + "\n" + styles.Error.Render(err.Error()) + "\n\n" + m.help.View()
+			return m.filename.View() + "\n" + styles.Error.Render(err.Error()) + "\n\n" + footer
 		}
 
-		return m.filename.View() + "\n\n" + m.help.View()
+		return m.filename.View() + "\n\n" + footer
 	default:
 		return ""
 	}
@@ -300,4 +397,17 @@ func (m *AddModel) setName() {
 
 		m.filename.Value(&name)
 	}
+}
+
+func (m *AddModel) hasChanges() bool {
+	return len(m.content.GetValue().(string)) > 0
+}
+
+func (m *AddModel) setContentHeight() {
+	height := utils.Ternary(m.showConfirmation,
+		m.height-5-lipgloss.Height(m.confirmation.View()),
+		m.height-6,
+	)
+
+	m.content.WithHeight(max(height, 10))
 }

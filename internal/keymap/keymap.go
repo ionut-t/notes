@@ -140,6 +140,16 @@ var New = key.NewBinding(
 	key.WithHelp("n", "new note"),
 )
 
+var Accept = key.NewBinding(
+	key.WithKeys("y", "Y"),
+	key.WithHelp("y", "yes"),
+)
+
+var Reject = key.NewBinding(
+	key.WithKeys("n", "N"),
+	key.WithHelp("n", "no"),
+)
+
 type Model struct {
 	Up         key.Binding
 	Down       key.Binding

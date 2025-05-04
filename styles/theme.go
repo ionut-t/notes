@@ -20,6 +20,7 @@ func ThemeCatppuccin() *huh.Theme {
 		accent   = Accent.GetForeground()
 		primary  = Primary.GetForeground()
 		cursor   = Primary.GetForeground()
+		surface0 = Surface0.GetBackground()
 	)
 
 	t.Focused.Base = t.Focused.Base.BorderForeground(subtext1)
@@ -38,8 +39,8 @@ func ThemeCatppuccin() *huh.Theme {
 	t.Focused.SelectedPrefix = t.Focused.SelectedPrefix.Foreground(green)
 	t.Focused.UnselectedPrefix = t.Focused.UnselectedPrefix.Foreground(text)
 	t.Focused.UnselectedOption = t.Focused.UnselectedOption.Foreground(text)
-	t.Focused.FocusedButton = t.Focused.FocusedButton.Foreground(base).Background(accent)
-	t.Focused.BlurredButton = t.Focused.BlurredButton.Foreground(text).Background(base)
+	t.Focused.FocusedButton = t.Focused.FocusedButton.Foreground(base).Background(primary)
+	t.Focused.BlurredButton = t.Focused.BlurredButton.Foreground(text).Background(surface0)
 
 	t.Focused.TextInput.Cursor = t.Focused.TextInput.Cursor.Foreground(cursor)
 	t.Focused.TextInput.Placeholder = t.Focused.TextInput.Placeholder.Foreground(overlay0)

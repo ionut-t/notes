@@ -1,24 +1,37 @@
 package ui
 
 import (
-	"fmt"
-
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
 
 type deleteModel struct {
-	store  *note.Store
-	active bool
-	width  int
+	store        *note.Store
+	active       bool
+	width        int
+	confirmation *huh.Confirm
 }
 
 func newDelete(store *note.Store) deleteModel {
+	confirmation := huh.NewConfirm().
+		Affirmative("Yes").
+		Negative("No")
+
+	confirmation.WithKeyMap(&huh.KeyMap{
+		Confirm: huh.NewDefaultKeyMap().Confirm,
+	})
+
+	confirmation.WithTheme(styles.ThemeCatppuccin())
+
 	return deleteModel{
-		store: store,
-		width: 40,
+		store:        store,
+		width:        40,
+		confirmation: confirmation,
 	}
 }
 
@@ -31,30 +44,15 @@ func (m deleteModel) View() string {
 		return ""
 	}
 
-	bg := styles.Crust.GetBackground()
-
-	question := styles.Text.
-		Background(bg).
+	confirmation := lipgloss.NewStyle().
 		Width(m.width).
 		Align(lipgloss.Center).
 		Padding(1, 2).
-		Render(fmt.Sprintf(
-			"Are you sure you want to delete %s",
-			styles.Accent.Background(bg).Render(m.store.MustGetCurrentNote().Name)+styles.Crust.Render("?"),
-		))
+		Render(m.confirmation.View())
 
-	options := styles.Text.
-		Background(bg).
-		Width(m.width).
-		Align(lipgloss.Center).
-		Padding(0, 2, 1).
-		Render(
-			styles.Error.Background(bg).Render("[Y]es") + styles.Crust.Render(" | ") + styles.Crust.Render("[N]o"),
-		)
+	content := lipgloss.JoinVertical(lipgloss.Center, confirmation)
 
-	content := lipgloss.JoinVertical(lipgloss.Center, question, options)
-
-	container := styles.Crust.
+	container := lipgloss.NewStyle().
 		Width(m.width).
 		Align(lipgloss.Center).
 		Render(content)
@@ -63,23 +61,37 @@ func (m deleteModel) View() string {
 }
 
 func (m deleteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if !m.active {
-			return m, nil
-		}
+	if !m.active {
+		return m, nil
+	}
 
-		switch keyMsg.String() {
-		case "y", "Y":
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, keymap.Accept):
 			return m.executeNoteDeletion()
-		case "n", "N", "esc", "q":
+
+		case key.Matches(msg, keymap.Reject), key.Matches(msg, keymap.Quit):
 			m.active = false
 			return m, dispatch(cmdAbortMsg{})
-		default:
-			return m, nil
+
+		case key.Matches(msg, keymap.Save):
+			if m.confirmation.GetValue().(bool) {
+				return m.executeNoteDeletion()
+			}
+			m.active = false
+			return m, dispatch(cmdAbortMsg{})
 		}
 	}
 
-	return m, nil
+	var cmds []tea.Cmd
+	if m.active {
+		confirmation, cmd := m.confirmation.Update(msg)
+		m.confirmation = confirmation.(*huh.Confirm)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m deleteModel) executeNoteDeletion() (deleteModel, tea.Cmd) {
@@ -98,7 +110,12 @@ func (m deleteModel) executeNoteDeletion() (deleteModel, tea.Cmd) {
 }
 
 func (m *deleteModel) setActive() {
-	if _, ok := m.store.GetCurrentNote(); ok {
+	if note, ok := m.store.GetCurrentNote(); ok {
 		m.active = true
+		question := styles.Text.Render(
+			"Are you sure you want to delete " +
+				styles.Primary.Render(note.Name) + "?",
+		)
+		m.confirmation.Title(question)
 	}
 }
