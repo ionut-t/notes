@@ -18,6 +18,42 @@ import (
 	"github.com/ionut-t/notes/internal/utils"
 )
 
+type configService interface {
+	GetStorage() string
+	GetEditor() string
+	GetVLineEnabledByDefault() bool
+	SetEditor(editor string) error
+	SetDefaultVLineStatus(enabled bool) error
+}
+
+type configServiceImpl struct{}
+
+func (c configServiceImpl) GetStorage() string {
+	return config.GetStorage()
+}
+func (c configServiceImpl) GetEditor() string {
+	return config.GetEditor()
+}
+func (c configServiceImpl) GetVLineEnabledByDefault() bool {
+	return config.GetVLineEnabledByDefault()
+}
+func (c configServiceImpl) SetEditor(editor string) error {
+	return config.SetEditor(editor)
+}
+func (c configServiceImpl) SetDefaultVLineStatus(enabled bool) error {
+	return config.SetDefaultVLineStatus(enabled)
+}
+
+type clipboardService interface {
+	copy(text string) error
+}
+
+type clipboardServiceImpl struct{}
+
+func (c clipboardServiceImpl) copy(text string) error {
+	return clipboard.WriteAll(text)
+}
+
 type Note struct {
 	Name      string
 	Content   string
@@ -27,21 +63,26 @@ type Note struct {
 }
 
 type Store struct {
-	storage         string
-	editor          string
-	notes           []Note
-	notesDictionary map[string]Note
-	currentNoteName string
+	storage          string
+	editor           string
+	notes            []Note
+	notesDictionary  map[string]Note
+	currentNoteName  string
+	configService    configService
+	clipboardService clipboardService
 }
 
 func NewStore() *Store {
-	storage := config.GetStorage()
-	editor := config.GetEditor()
+	configService := configServiceImpl{}
+	storage := configService.GetStorage()
+	editor := configService.GetEditor()
 
 	store := &Store{
-		storage:         storage,
-		editor:          editor,
-		notesDictionary: make(map[string]Note),
+		storage:          storage,
+		editor:           editor,
+		notesDictionary:  make(map[string]Note),
+		configService:    configService,
+		clipboardService: clipboardServiceImpl{},
 	}
 
 	return store
@@ -53,10 +94,6 @@ func (s *Store) GetCurrentNote() (Note, bool) {
 	}
 
 	return Note{}, false
-}
-
-func (s *Store) MustGetCurrentNote() Note {
-	return s.notesDictionary[s.currentNoteName]
 }
 
 func (s *Store) SetCurrentNoteName(name string) {
@@ -106,7 +143,10 @@ func (s *Store) Delete(name string) error {
 
 func (s *Store) RenameCurrentNote(newName string) (Note, error) {
 	if note, ok := s.GetCurrentNote(); ok {
-		return s.RenameNote(note.Name, newName)
+		if renamedNote, err := s.RenameNote(note.Name, newName); err == nil {
+			s.SetCurrentNoteName(renamedNote.Name)
+			return renamedNote, nil
+		}
 	}
 
 	return Note{}, errors.New("note not found")
@@ -198,47 +238,12 @@ func (s *Store) IsFirstNote() bool {
 	return s.currentNoteName == s.notes[0].Name
 }
 
-func (s *Store) GetNote(name string) (Note, bool) {
-	path := filepath.Join(s.storage, name+".md")
-	note, err := s.loadNoteFromFile(path)
-
-	if err == nil {
-		return note, true
-	}
-
-	notes, err := s.LoadNotes()
-
-	if err != nil {
-		return Note{}, false
-	}
-
-	for _, n := range notes {
-		if strings.Contains(n.Name, name) {
-			return n, true
-		}
-	}
-
-	return Note{}, false
-}
-
-func (s *Store) GetNoteByName(name string) (Note, bool) {
-	if note, ok := s.notesDictionary[name]; ok {
-		return note, true
-	}
-
-	return Note{}, false
-}
-
 func (s Store) GetEditor() string {
-	return s.editor
-}
-
-func (s Store) GetStorage() string {
-	return s.storage
+	return s.configService.GetEditor()
 }
 
 func (s *Store) SetEditor(editor string) error {
-	err := config.SetEditor(editor)
+	err := s.configService.SetEditor(editor)
 
 	if err != nil {
 		return err
@@ -248,8 +253,8 @@ func (s *Store) SetEditor(editor string) error {
 	return nil
 }
 
-func (s Store) SetDefaultVLineStatus(enabled bool) error {
-	return config.SetDefaultVLineStatus(enabled)
+func (s *Store) SetDefaultVLineStatus(enabled bool) error {
+	return s.configService.SetDefaultVLineStatus(enabled)
 }
 
 func (s Store) GetNotePath(name string) string {
@@ -257,11 +262,11 @@ func (s Store) GetNotePath(name string) string {
 }
 
 func (s Store) GetVLineEnabledByDefault() bool {
-	return config.GetVLineEnabledByDefault()
+	return s.configService.GetVLineEnabledByDefault()
 }
 
-func (s *Store) CopyContent(content string) error {
-	if err := clipboard.WriteAll(content); err != nil {
+func (s Store) CopyContent(content string) error {
+	if err := s.clipboardService.copy(content); err != nil {
 		return fmt.Errorf("failed to copy note content: %w", err)
 	}
 
@@ -300,7 +305,7 @@ func (s *Store) CopyLines(content string, start, end int) (int, error) {
 
 	content = strings.Join(lines[start:end+1], "\n")
 
-	if err := clipboard.WriteAll(content); err != nil {
+	if err := s.clipboardService.copy(content); err != nil {
 		return 0, fmt.Errorf("failed to copy note content: %w", err)
 	}
 

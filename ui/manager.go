@@ -185,7 +185,6 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			title: note.Name,
 			desc:  fmt.Sprintf("Last modified: %s", note.UpdatedAt.Format("02/01/2006 15:04")),
 		})
-		m.store.SetCurrentNoteName(note.Name)
 
 	case clearMsg:
 		m.successMessage = ""
