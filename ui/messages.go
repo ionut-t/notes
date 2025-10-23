@@ -11,15 +11,11 @@ type editorClosedMsg struct{}
 
 type clearMsg struct{}
 
-type cmdInitMsg struct{}
-
 type cmdSuccessMsg string
 
 type cmdErrorMsg error
 
 type cmdAbortMsg struct{}
-
-type cmdSetVLineMsg bool
 
 type cmdNoteRenamedMsg struct {
 	note note.Note
@@ -28,6 +24,8 @@ type cmdNoteRenamedMsg struct {
 type cmdNoteDeletedMsg struct{}
 
 type noteAddedMsg struct{}
+
+type changesDiscardedMsg struct{}
 
 func dispatch(msg tea.Msg) tea.Cmd {
 	return func() tea.Msg {

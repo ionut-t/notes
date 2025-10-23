@@ -3,6 +3,8 @@ package styles
 import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ionut-t/coffee/styles"
+	editor "github.com/ionut-t/goeditor/adapter-bubbletea"
 )
 
 func ThemeCatppuccin() *huh.Theme {
@@ -58,4 +60,12 @@ func ThemeCatppuccin() *huh.Theme {
 	t.Help.FullSeparator = t.Help.FullSeparator.Foreground(subtext0)
 
 	return t
+}
+
+func EditorTheme() editor.Theme {
+	return styles.EditorTheme()
+}
+
+func HighlighterTheme() string {
+	return styles.HighlighterTheme()
 }

@@ -21,7 +21,6 @@ func configCmd() *cobra.Command {
 			// Check if flags were provided
 			editorFlag, _ := cmd.Flags().GetString("editor")
 			storageFlag, _ := cmd.Flags().GetString("storage")
-			vLineFlag, _ := cmd.Flags().GetBool("v-line")
 
 			// Handle flag updates
 			flagsSet := false
@@ -38,12 +37,6 @@ func configCmd() *cobra.Command {
 				viper.Set("storage", storageFlag)
 				flagsSet = true
 				fmt.Println("Storage set to:", storageFlag)
-			}
-
-			if cmd.Flags().Changed("v-line") {
-				viper.Set("v_line", vLineFlag)
-				flagsSet = true
-				fmt.Println("Show line numbers in markdown by default:", vLineFlag)
 			}
 
 			// Write config if any flags were set
@@ -63,7 +56,6 @@ func configCmd() *cobra.Command {
 
 	cmd.Flags().StringP("editor", "e", "", "Set the editor to use for notes")
 	cmd.Flags().StringP("storage", "s", "", "Set the storage path for notes")
-	cmd.Flags().Bool("v-line", false, "Show line numbers in markdown by default")
 
 	return cmd
 }

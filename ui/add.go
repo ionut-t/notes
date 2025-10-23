@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"math"
 	"os"
 	"os/exec"
 	"regexp"
@@ -13,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	editor "github.com/ionut-t/goeditor/adapter-bubbletea"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/internal/utils"
@@ -40,7 +40,7 @@ type AddModel struct {
 	err              error
 	success          bool
 	view             addView
-	content          *huh.Text
+	editor           editor.Model
 	filename         *huh.Input
 	confirmation     *huh.Confirm
 	filenameError    error
@@ -51,11 +51,13 @@ type AddModel struct {
 }
 
 func NewAddModel(store *note.Store) AddModel {
-	content := huh.NewText().
-		Key("content").
-		Placeholder("Write your note here").
-		ShowLineNumbers(true).
-		CharLimit(math.MaxInt64)
+	textEditor := editor.New(80, 10)
+	textEditor.SetCursorMode(editor.CursorBlink)
+	textEditor.SetInsertMode()
+	textEditor.DisableCommandMode(true)
+	textEditor.SetLanguage("markdown", styles.HighlighterTheme())
+	textEditor.SetExtraHighlightedContextLines(1000)
+	textEditor.Focus()
 
 	fileName := huh.NewInput().
 		Key("fileName").
@@ -69,17 +71,6 @@ func NewAddModel(store *note.Store) AddModel {
 		Negative("No")
 
 	fileName.WithTheme(styles.ThemeCatppuccin())
-	content.WithTheme(styles.ThemeCatppuccin())
-	content.WithWidth(80)
-	content.WithHeight(10)
-	content.Focus()
-
-	content.WithKeyMap(&huh.KeyMap{
-		Text: huh.TextKeyMap{
-			NewLine: keymap.NewLine,
-		},
-		Quit: keymap.QuitForm,
-	})
 
 	confirmation.WithKeyMap(&huh.KeyMap{
 		Confirm: huh.NewDefaultKeyMap().Confirm,
@@ -93,7 +84,7 @@ func NewAddModel(store *note.Store) AddModel {
 	m := AddModel{
 		store:        store,
 		view:         addContent,
-		content:      content,
+		editor:       textEditor,
 		filename:     fileName,
 		confirmation: confirmation,
 		help:         helpMenu,
@@ -109,10 +100,14 @@ func NewAddModel(store *note.Store) AddModel {
 func (m *AddModel) markAsIntegrated() {
 	m.standalone = false
 	m.setContentHeight()
+	em, _ := m.editor.Update(nil)
+	m.editor = em.(editor.Model)
+	m.editor.SetNormalMode()
+	m.filename.WithWidth(min(m.width-2, 50))
 }
 
 func (m AddModel) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, tea.SetWindowTitle("Notes"))
+	return tea.Batch(textinput.Blink, m.editor.CursorBlink(), tea.SetWindowTitle("Notes"))
 }
 
 func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -125,15 +120,14 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.content.WithWidth(m.width - 4)
-		m.content.WithHeight(min(m.height-4, 10))
+		m.editor.SetSize(m.width-4, min(m.height-4, 20))
+		m.filename.WithWidth(min(m.width-4, 50))
 
 	case updateValueMsg:
-		value := string(msg)
-		m.content.Value(&value)
+		m.editor.SetBytes(msg)
 
-		content, cmd := m.content.Update(msg)
-		m.content = content.(*huh.Text)
+		content, cmd := m.editor.Update(msg)
+		m.editor = content.(editor.Model)
 		cmds = append(cmds, cmd)
 
 	case tea.KeyMsg:
@@ -143,15 +137,19 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case key.Matches(msg, keymap.Cancel):
+			if m.view == addContent && !m.editor.IsNormalMode() {
+				break
+			}
+
 			if m.showConfirmation {
 				m.showConfirmation = false
-				m.content.Focus()
+				m.editor.Focus()
 				break
 			}
 
 			if m.hasChanges() && m.view == addContent {
 				m.showConfirmation = true
-				m.content.Blur()
+				m.editor.Blur()
 				m.confirmation.Focus()
 				break
 			}
@@ -159,7 +157,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == addName {
 				m.view = addContent
 				m.setHelp()
-				m.content.Focus()
+				m.editor.Focus()
 
 				if _, err := validateNoteName(m.filename); err == nil {
 					m.filenameError = nil
@@ -185,13 +183,13 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filename.Focus()
 			}
 
-		case key.Matches(msg, keymap.Editor):
+		case key.Matches(msg, keymap.ExternalEditor):
 			if m.view == addName {
 				break
 			}
 
 			tmpFile, _ := os.CreateTemp(os.TempDir(), "*.md")
-			tmpFile.WriteString(m.content.GetValue().(string))
+			tmpFile.WriteString(m.editor.GetCurrentContent())
 
 			execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), tmpFile.Name()), func(error) tea.Msg {
 				content, _ := os.ReadFile(tmpFile.Name())
@@ -219,13 +217,13 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				m.showConfirmation = false
 
-				m.content.Focus()
+				m.editor.Focus()
 
 				break
 			}
 
 			if m.view == addName {
-				content := m.content.GetValue().(string)
+				content := m.editor.GetCurrentContent()
 
 				noteName, err := validateNoteName(m.filename)
 
@@ -275,7 +273,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Reject):
 			if m.showConfirmation {
 				m.showConfirmation = false
-				m.content.Focus()
+				m.editor.Focus()
 
 				return m, nil
 			}
@@ -284,8 +282,8 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch m.view {
 	case addContent:
-		content, cmd := m.content.Update(msg)
-		m.content = content.(*huh.Text)
+		content, cmd := m.editor.Update(msg)
+		m.editor = content.(editor.Model)
 		cmds = append(cmds, cmd)
 
 	case addName:
@@ -312,14 +310,17 @@ func (m AddModel) View() string {
 		return ""
 	}
 
-	pY := utils.Ternary(m.standalone, 1, 2)
+	if m.standalone {
+		return lipgloss.NewStyle().
+			Border(addViewBorder).
+			BorderForeground(styles.Accent.GetForeground()).
+			Padding(1, 2).
+			Margin(0, 1).
+			Render(m.getView())
+	}
 
 	return lipgloss.NewStyle().
-		Border(addViewBorder).
-		BorderForeground(styles.Accent.GetForeground()).
-		Width(m.width-4).
-		Padding(pY, 2).
-		Margin(0, 1).
+		Padding(1, 1).
 		Render(m.getView())
 }
 
@@ -336,7 +337,7 @@ func (m AddModel) getView() string {
 
 	switch m.view {
 	case addContent:
-		return m.content.View() + "\n\n" + footer
+		return m.editor.View() + "\n\n" + footer
 	case addName:
 		if err := m.filenameError; err != nil {
 			return m.filename.View() + "\n" + styles.Error.Render(err.Error()) + "\n\n" + footer
@@ -353,15 +354,13 @@ func (m *AddModel) setHelp() {
 	case addContent:
 		if m.standalone {
 			m.help.Keys.ShortHelpBindings = []key.Binding{
-				keymap.NewLine,
-				keymap.Editor,
+				keymap.ExternalEditor,
 				keymap.Continue,
 				keymap.Back,
 			}
 		} else {
 			m.help.Keys.ShortHelpBindings = []key.Binding{
-				keymap.NewLine,
-				keymap.Editor,
+				keymap.ExternalEditor,
 				keymap.Continue,
 				keymap.Quit,
 			}
@@ -383,7 +382,7 @@ func (m *AddModel) setName() {
 		return
 	}
 
-	content := m.content.GetValue().(string)
+	content := m.editor.GetCurrentContent()
 	name := strings.Split(content, "\n")[0]
 
 	if strings.HasPrefix(name, "#") {
@@ -400,14 +399,18 @@ func (m *AddModel) setName() {
 }
 
 func (m *AddModel) hasChanges() bool {
-	return len(m.content.GetValue().(string)) > 0
+	return len(m.editor.GetCurrentContent()) > 0
+}
+
+func (m *AddModel) blink() tea.Cmd {
+	return m.editor.CursorBlink()
 }
 
 func (m *AddModel) setContentHeight() {
 	height := utils.Ternary(m.showConfirmation,
 		m.height-5-lipgloss.Height(m.confirmation.View()),
-		m.height-6,
+		m.height-4,
 	)
 
-	m.content.WithHeight(max(height, 10))
+	m.editor.SetSize(m.width, max(height, 10))
 }

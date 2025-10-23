@@ -8,9 +8,9 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	editor "github.com/ionut-t/goeditor/adapter-bubbletea"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
-	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/styles"
 )
@@ -51,12 +51,9 @@ type ManagerModel struct {
 	focusedView    focusedView
 	noteView       NoteModel
 	error          error
-	renameInput    renameModel
 	help           help.Model
 	width, height  int
 	successMessage string
-	cmdInput       cmdInputModel
-	delete         deleteModel
 	addNote        AddModel
 }
 
@@ -74,14 +71,11 @@ func NewManager(store *note.Store) *ManagerModel {
 	delegate.Styles = styles.ListItemStyles()
 
 	m := ManagerModel{
-		store:       store,
-		list:        list.New(items, delegate, 0, 0),
-		help:        help.New(),
-		cmdInput:    newCmdInputModel(store),
-		noteView:    NewNoteModel(store, 100, 20),
-		renameInput: newRenameModel(store),
-		delete:      newDelete(store),
-		error:       err,
+		store:    store,
+		list:     list.New(items, delegate, 0, 0),
+		help:     help.New(),
+		noteView: NewNoteModel(store, 100, 20),
+		error:    err,
 	}
 
 	m.list.Title = "Notes"
@@ -92,7 +86,7 @@ func NewManager(store *note.Store) *ManagerModel {
 		CursorUp:             keymap.Up,
 		CursorDown:           keymap.Down,
 		Filter:               keymap.Search,
-		AcceptWhileFiltering: keymap.Select,
+		AcceptWhileFiltering: keymap.FullScreen,
 		CancelWhileFiltering: keymap.Cancel,
 	}
 
@@ -107,15 +101,10 @@ func NewManager(store *note.Store) *ManagerModel {
 		keymap.Down,
 		keymap.Left,
 		keymap.Right,
-		keymap.Select,
-		keymap.QuickEditor,
+		keymap.FullScreen,
+		keymap.ExternalEditor,
 		keymap.New,
-		keymap.Rename,
 		keymap.Search,
-		keymap.VLine,
-		keymap.Copy,
-		keymap.CopyLines,
-		keymap.Delete,
 		keymap.Quit,
 		keymap.Help,
 	}
@@ -155,10 +144,8 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.RemoveItem(m.list.Index())
 		if item, ok := m.list.SelectedItem().(item); ok {
 			m.store.SetCurrentNoteName(item.title)
+			m.noteView.render()
 		}
-
-	case cmdInitMsg, cmdAbortMsg:
-		return m, m.dispatchWindowSizeMsg()
 
 	case cmdSuccessMsg:
 		m.successMessage = string(msg)
@@ -176,9 +163,6 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dispatchWindowSizeMsg(),
 		)
 
-	case cmdSetVLineMsg:
-		m.noteView.vLine = bool(msg)
-
 	case cmdNoteRenamedMsg:
 		note := msg.note
 		m.list.SetItem(m.list.Index(), item{
@@ -192,16 +176,35 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.error = nil
 		m.noteView.error = nil
 
+	case changesDiscardedMsg:
+		if m.view == splitView {
+			m.focusedView = listFocused
+		}
+
+	case editor.SaveMsg:
+		err := m.store.UpdateCurrentNoteContent(string(msg.Content))
+		if err != nil {
+			m.error = fmt.Errorf("failed to save note: %w", err)
+			m.successMessage = ""
+		} else {
+			m.successMessage = "Note saved successfully"
+			m.error = nil
+			m.noteView.updateContent()
+
+			if m.view == splitView {
+				m.list.SetItems(processNotes(m.store.GetNotes()))
+				m.list.ResetSelected()
+			}
+
+			return m, dispatchClearMsg()
+		}
+
 	case tea.KeyMsg:
 		if key.Matches(msg, keymap.ForceQuit) {
 			return m, tea.Quit
 		}
 
-		if m.list.FilterState() == list.Filtering ||
-			m.cmdInput.active ||
-			m.renameInput.active ||
-			m.delete.active ||
-			m.addNote.active {
+		if m.list.FilterState() == list.Filtering || m.addNote.active {
 			break
 		}
 
@@ -209,63 +212,50 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keymap.Quit):
 			return m.handleQuit()
 
-		case key.Matches(msg, keymap.Select):
-			return m.handleSelection()
+		case key.Matches(msg, keymap.FullScreen):
+			return m.handleFullScreen()
 
-		case key.Matches(msg, keymap.QuickEditor):
+		case key.Matches(msg, keymap.ToggleEdit):
+			if !m.noteView.isEditing() {
+				m.noteView.toggleEdit()
+			}
+
+		case key.Matches(msg, keymap.ExternalEditor):
 			if ok, cmd := m.triggerNoteEditor(); ok {
 				return m, cmd
 			}
 
-		case key.Matches(msg, keymap.Delete):
-			if !m.noteView.fullScreen {
-				m.delete.setActive()
-				return m, dispatch(cmdInitMsg{})
-			}
-
-		case key.Matches(msg, keymap.Rename):
-			m.renameInput.setActive()
-			return m, dispatch(cmdInitMsg{})
-
-		case key.Matches(msg, keymap.Copy):
-			return m.copyNoteContent()
-
-		case key.Matches(msg, keymap.Command):
-			m.cmdInput.active = true
-			return m, dispatch(cmdInitMsg{})
-
-		case key.Matches(msg, keymap.Left):
-			if m.view == splitView {
-				if m.focusedView == listFocused {
-					m.focusedView = noteFocused
-				} else {
-					m.focusedView = listFocused
+		case key.Matches(msg, keymap.ChangeFocused):
+			if m.view == splitView && !m.noteView.isEditing() {
+				if m.noteView.hasChanges() {
+					m.noteView.confirm(true)
+					break
 				}
-			}
 
-		case key.Matches(msg, keymap.Right):
-			if m.view == splitView {
 				if m.focusedView == listFocused {
 					m.focusedView = noteFocused
+					cmd := m.noteView.focus()
+					cmds = append(cmds, cmd)
 				} else {
 					m.focusedView = listFocused
+					m.noteView.blur()
 				}
 			}
 
 		case key.Matches(msg, keymap.New):
+			if m.noteView.isEditing() {
+				break
+			}
+
 			m.addNote = NewAddModel(m.store)
 			m.addNote.height = m.height
+			m.addNote.width = m.width
 			m.addNote.markAsIntegrated()
-			return m, nil
-
-		case key.Matches(msg, keymap.VLine):
-			if m.focusedView == listFocused {
-				m.noteView.vLine = !m.noteView.vLine
-			}
+			return m, m.addNote.blink()
 		}
 	}
 
-	if !m.cmdInput.active && !m.renameInput.active && !m.delete.active && !m.addNote.active {
+	if !m.addNote.active {
 		switch m.focusedView {
 		case listFocused:
 			var cmd tea.Cmd
@@ -290,7 +280,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.store.SetCurrentNoteName(selected)
-			width, height, _ := m.getAvailableSizes()
+			width, height := m.getAvailableSizes()
 			m.noteView.setSize(width-min(width/2, minListWidth), height)
 			m.noteView.updateContent()
 
@@ -309,27 +299,9 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.cmdInput.active {
-		cmdModel, cmd := m.cmdInput.Update(msg)
-		m.cmdInput = cmdModel.(cmdInputModel)
-		cmds = append(cmds, cmd)
-	}
-
-	if m.renameInput.active {
-		renameInput, cmd := m.renameInput.Update(msg)
-		m.renameInput = renameInput.(renameModel)
-		cmds = append(cmds, cmd)
-	}
-
 	if m.addNote.active {
 		addNoteModel, cmd := m.addNote.Update(msg)
 		m.addNote = addNoteModel.(AddModel)
-		cmds = append(cmds, cmd)
-	}
-
-	if m.delete.active {
-		deleteM, cmd := m.delete.Update(msg)
-		m.delete = deleteM.(deleteModel)
 		cmds = append(cmds, cmd)
 	}
 
@@ -343,29 +315,9 @@ func (m ManagerModel) View() string {
 
 	switch m.view {
 	case listView:
-		if m.delete.active {
-			return viewPadding.Render(m.list.View()) + "\n" + m.delete.View()
-		}
-
-		if m.renameInput.active {
-			return m.getViewInRenameMode(viewPadding.Render(m.list.View()))
-		}
-
-		if m.cmdInput.active {
-			return m.getViewInCmdMode()
-		}
-
 		return viewPadding.Render(m.list.View()) + "\n" + m.statusBarView()
 
 	case noteView:
-		if m.renameInput.active {
-			return m.getViewInRenameMode(m.noteView.View())
-		}
-
-		if m.cmdInput.active {
-			return m.noteView.View() + "\n" + m.cmdInput.View()
-		}
-
 		return m.noteView.View()
 
 	case splitView:
@@ -413,46 +365,13 @@ func (m ManagerModel) getSplitView() string {
 		)
 	}
 
-	renderedView := viewPadding.Render(lipgloss.JoinVertical(
-		lipgloss.Left,
-		joinedContent,
-	))
-
-	if m.renameInput.active {
-		if m.error != nil {
-			return renderedView + "\n" + styles.Error.Margin(0, 2).Render(m.error.Error())
-		}
-
-		return renderedView + "\n" + m.renameInput.View()
-	}
-
-	if m.cmdInput.active {
-		if m.error != nil {
-			return renderedView + "\n" + styles.Error.Margin(0, 2).Render(m.error.Error())
-		}
-
-		return renderedView + "\n" + m.cmdInput.View()
-	}
-
-	if m.delete.active {
-		return lipgloss.JoinVertical(
-			lipgloss.Left,
-			renderedView,
-			m.delete.View(),
-		)
-	}
+	renderedView := viewPadding.Render(joinedContent)
 
 	return renderedView + "\n" + m.statusBarView()
 }
 
-func (m ManagerModel) getViewInRenameMode(mainView string) string {
-	return mainView + "\n" + m.renameInput.View()
-}
-
 func (m ManagerModel) getViewInCmdMode() string {
-	mainView := viewPadding.Render(m.list.View()) + "\n" + m.statusBarView()
-
-	return mainView + "\n" + m.cmdInput.View()
+	return viewPadding.Render(m.list.View()) + "\n" + m.statusBarView()
 }
 
 func (m ManagerModel) statusBarView() string {
@@ -470,19 +389,13 @@ func (m ManagerModel) statusBarView() string {
 		}
 	} else {
 		m.help.Keys.ShortHelpBindings = []key.Binding{
-			keymap.Select,
-			keymap.QuickEditor,
-			keymap.Rename,
+			keymap.FullScreen,
+			keymap.ExternalEditor,
 			keymap.Search,
-			keymap.Delete,
 			keymap.New,
 			keymap.Quit,
 			keymap.Help,
 		}
-	}
-
-	if m.delete.active {
-		return ""
 	}
 
 	if m.help.FullView {
@@ -507,20 +420,19 @@ func processNotes(notes []note.Note) []list.Item {
 
 func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 	if msg.Width < 2*minListWidth {
-		if m.view == splitView {
+		switch m.view {
+		case splitView:
 			m.view = listView
-		} else if m.view == listView {
+		case listView:
 			m.view = splitView
 		}
 	}
 
 	m.width, m.height = msg.Width, msg.Height
 
-	availableWidth, availableHeight, cmdViewHeight := m.getAvailableSizes()
+	availableWidth, availableHeight := m.getAvailableSizes()
 
 	m.help.SetSize(msg.Width, msg.Height)
-
-	m.delete.width = msg.Width
 
 	if m.view == listView {
 		m.list.SetSize(availableWidth, availableHeight)
@@ -528,7 +440,7 @@ func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 	}
 
 	if m.view == noteView {
-		m.noteView.setSize(msg.Width, msg.Height-cmdViewHeight)
+		m.noteView.setSize(msg.Width, msg.Height)
 	}
 
 	if m.view == splitView {
@@ -588,25 +500,37 @@ func (m ManagerModel) handleQuit() (ManagerModel, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func (m ManagerModel) handleSelection() (ManagerModel, tea.Cmd) {
-	if m.view != listView && m.view != splitView || len(m.list.Items()) == 0 {
+func (m ManagerModel) handleFullScreen() (ManagerModel, tea.Cmd) {
+	if len(m.list.Items()) == 0 ||
+		m.noteView.isEditing() {
 		return m, nil
 	}
 
+	m.noteView.fullScreen = !m.noteView.fullScreen
 	m.help.FullView = false
 	m.noteView.setSize(m.width, m.height)
-	m.noteView.fullScreen = true
 
 	m.noteView.updateContent()
 
-	m.view = noteView
-	m.focusedView = noteFocused
+	var cmds []tea.Cmd
 
-	return m, m.dispatchWindowSizeMsg()
+	if m.noteView.fullScreen {
+		m.view = noteView
+		m.focusedView = noteFocused
+		cmd := m.noteView.focus()
+		cmds = append(cmds, cmd)
+	} else {
+		m.view = splitView
+		m.focusedView = listFocused
+		m.noteView.blur()
+	}
+
+	cmds = append(cmds, m.dispatchWindowSizeMsg())
+	return m, tea.Batch(cmds...)
 }
 
 func (m *ManagerModel) triggerNoteEditor() (bool, tea.Cmd) {
-	if m.delete.active || len(m.list.Items()) == 0 {
+	if len(m.list.Items()) == 0 {
 		return false, nil
 	}
 
@@ -622,51 +546,17 @@ func (m *ManagerModel) triggerNoteEditor() (bool, tea.Cmd) {
 	return false, nil
 }
 
-func (m ManagerModel) copyNoteContent() (ManagerModel, tea.Cmd) {
-	m.noteView.updateContent()
-
-	if note, ok := m.store.GetCurrentNote(); ok {
-		if err := m.store.CopyContent(note.Content); err != nil {
-			return m, dispatch(cmdErrorMsg(err))
-		}
-
-		m.successMessage = "Note copied to clipboard"
-		m.noteView.successMessage = m.successMessage
-
-		return m, dispatchClearMsg()
-	}
-
-	return m, nil
-}
-
 func (m ManagerModel) dispatchWindowSizeMsg() tea.Cmd {
 	return dispatch(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 }
 
-func (m ManagerModel) getAvailableSizes() (int, int, int) {
+func (m ManagerModel) getAvailableSizes() (int, int) {
 	h, v := viewPadding.GetFrameSize()
 
-	var cmdExecutorHeight int
-	var deleteViewHeight int
+	statusBarHeight := lipgloss.Height(m.statusBarView())
 
-	if m.cmdInput.active {
-		cmdExecutorHeight = lipgloss.Height(m.cmdInput.View())
-	}
-
-	if m.renameInput.active {
-		cmdExecutorHeight = lipgloss.Height(m.renameInput.View())
-	}
-
-	statusBarHeight := utils.Ternary(m.cmdInput.active || m.renameInput.active, 0, lipgloss.Height(m.statusBarView()))
-
-	if m.delete.active {
-		deleteViewHeight = lipgloss.Height(m.delete.View())
-	}
-
-	availableHeight := m.height - v - statusBarHeight - cmdExecutorHeight - deleteViewHeight - activeBorder.GetBorderBottomSize()
+	availableHeight := m.height - v - statusBarHeight - activeBorder.GetBorderBottomSize()
 	availableWidth := m.width - h
 
-	cmdViewHeight := cmdExecutorHeight - deleteViewHeight
-
-	return availableWidth, availableHeight, cmdViewHeight
+	return availableWidth, availableHeight
 }

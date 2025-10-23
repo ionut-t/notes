@@ -3,7 +3,6 @@ package note
 import (
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,12 +48,6 @@ func (m *mockClipboardService) copy(text string) error {
 	return nil
 }
 
-type errorMockClipboardService struct{}
-
-func (m *errorMockClipboardService) copy(text string) error {
-	return errors.New("clipboard error")
-}
-
 func setupTestStore(t *testing.T) *Store {
 	t.Helper()
 	tempDir := t.TempDir()
@@ -83,15 +76,6 @@ func TestStore_SetEditor(t *testing.T) {
 
 	assert.Equal(t, newEditor, store.editor)
 	assert.NoError(t, err)
-}
-
-func TestStore_SetDefaultVLineStatus(t *testing.T) {
-	t.Parallel()
-	store := setupTestStore(t)
-	err := store.SetDefaultVLineStatus(true)
-
-	assert.NoError(t, err)
-	assert.Equal(t, true, store.GetVLineEnabledByDefault())
 }
 
 func TestStore_loadNoteFromFile(t *testing.T) {
@@ -147,11 +131,10 @@ func TestStore_saveNote(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	noteName, err := store.saveNote(note)
+	err := store.saveNote(note.Name, note)
 	assert.NoError(t, err)
-	assert.Equal(t, note.Name, noteName)
 
-	filePath := filepath.Join(store.storage, noteName+".md")
+	filePath := filepath.Join(store.storage, note.Name+".md")
 	assert.FileExists(t, filePath)
 
 	data, err := os.ReadFile(filePath)
@@ -176,13 +159,12 @@ func TestStore_saveNote_DirectoryCreation(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	noteName, err := store.saveNote(note)
+	err := store.saveNote(note.Name, note)
 	assert.NoError(t, err)
-	assert.Equal(t, note.Name, noteName)
 
 	assert.DirExists(t, tempDir)
 
-	filePath := filepath.Join(tempDir, noteName+".md")
+	filePath := filepath.Join(tempDir, note.Name+".md")
 	assert.FileExists(t, filePath)
 }
 
@@ -191,8 +173,19 @@ func TestStore_saveNote_NameCollision(t *testing.T) {
 
 	store := setupTestStore(t)
 
-	store.notesDictionary["test-note"] = Note{Name: "test-note"}
+	// First, create the initial note
+	firstNote := Note{
+		Name:      "test-note",
+		Content:   "First note",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
 
+	err := store.saveNote(firstNote.Name, firstNote)
+	assert.NoError(t, err)
+	store.notesDictionary["test-note"] = firstNote
+
+	// Now create a second note with the same name
 	note := Note{
 		Name:      "test-note",
 		Content:   "This is a test note",
@@ -200,11 +193,13 @@ func TestStore_saveNote_NameCollision(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	noteName, err := store.saveNote(note)
+	// Generate unique name and save
+	uniqueName := store.generateUniqueName(note.Name)
+	err = store.saveNote(uniqueName, note)
 	assert.NoError(t, err)
-	assert.Equal(t, "test-note-1", noteName)
+	assert.Equal(t, "test-note-1", uniqueName)
 
-	filePath := filepath.Join(store.storage, noteName+".md")
+	filePath := filepath.Join(store.storage, uniqueName+".md")
 	assert.FileExists(t, filePath)
 }
 
@@ -220,14 +215,13 @@ func TestStore_Delete(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	noteName, err := store.saveNote(note)
-	assert.NoError(t, err)
-	assert.Equal(t, note.Name, noteName)
-
-	err = store.Delete(noteName)
+	err := store.saveNote(note.Name, note)
 	assert.NoError(t, err)
 
-	filePath := filepath.Join(store.storage, noteName+".md")
+	err = store.Delete(note.Name)
+	assert.NoError(t, err)
+
+	filePath := filepath.Join(store.storage, note.Name+".md")
 	assert.NoFileExists(t, filePath)
 }
 
@@ -253,12 +247,11 @@ func TestStore_RenameNote(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	noteName, err := store.saveNote(note)
+	err := store.saveNote(note.Name, note)
 	assert.NoError(t, err)
-	assert.Equal(t, note.Name, noteName)
 
 	newName := "renamed-note"
-	_, err = store.RenameNote(noteName, newName)
+	_, err = store.RenameNote(note.Name, newName)
 	assert.NoError(t, err)
 
 	filePath := filepath.Join(store.storage, newName+".md")
@@ -329,7 +322,7 @@ func TestStore_LoadNotes_Multiple(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 
-		_, err := store.saveNote(note)
+		err := store.saveNote(note.Name, note)
 		assert.NoError(t, err)
 	}
 
@@ -364,7 +357,7 @@ func TestStore_LoadNotes_MixedFiles(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	_, err := store.saveNote(mdNote)
+	err := store.saveNote(mdNote.Name, mdNote)
 	assert.NoError(t, err)
 
 	nonMdPath := filepath.Join(store.storage, "not-a-note.txt")
@@ -423,129 +416,4 @@ func TestStore_IsFirstNote(t *testing.T) {
 
 	store.SetCurrentNoteName("first-note")
 	assert.False(t, store.IsFirstNote(), "Should not be the first note when an older one is selected") //
-}
-
-func TestStore_CopyLines(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore(t)
-
-	mockClipboard := &mockClipboardService{}
-	store.clipboardService = mockClipboard
-
-	content := "Line 1\nLine 2\nLine 3"
-	linesCopied, err := store.CopyLines(content, 1, 2)
-
-	assert.NoError(t, err)
-	assert.Equal(t, 2, linesCopied)
-	assert.Equal(t, "Line 1\nLine 2", mockClipboard.CopiedText)
-
-	linesCopied, err = store.CopyLines(content, 2, 2)
-
-	assert.NoError(t, err)
-	assert.Equal(t, 1, linesCopied)
-	assert.Equal(t, "Line 2", mockClipboard.CopiedText)
-}
-
-func TestStore_CopyLines_Error(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore(t)
-	store.clipboardService = &errorMockClipboardService{}
-
-	content := "Line 1\nLine 2\nLine 3"
-	_, err := store.CopyLines(content, 1, 2)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to copy note content")
-}
-
-func TestStore_CopyLines_InvalidRange(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore(t)
-
-	content := "Line 1\nLine 2\nLine 3"
-
-	_, err := store.CopyLines(content, 0, 2)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid start line")
-
-	_, err = store.CopyLines(content, 3, 1)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid range")
-}
-
-func TestStore_ParseCopyLinesCommand(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name          string
-		command       string
-		expectedStart int
-		expectedEnd   int
-		expectError   bool
-	}{
-		{
-			name:          "single line",
-			command:       "co 1",
-			expectedStart: 1,
-			expectedEnd:   1,
-			expectError:   false,
-		},
-		{
-			name:          "line range",
-			command:       "co 1 2",
-			expectedStart: 1,
-			expectedEnd:   2,
-			expectError:   false,
-		},
-		{
-			name:          "forward relative",
-			command:       "co 20 > 2",
-			expectedStart: 20,
-			expectedEnd:   22,
-			expectError:   false,
-		},
-		{
-			name:          "forward to end",
-			command:       "co 20 > -1",
-			expectedStart: 20,
-			expectedEnd:   math.MaxInt32,
-			expectError:   false,
-		},
-		{
-			name:          "backward relative",
-			command:       "co 20 < 2",
-			expectedStart: 18,
-			expectedEnd:   20,
-			expectError:   false,
-		},
-		{
-			name:          "backward to start",
-			command:       "co 20 < -1",
-			expectedStart: 1,
-			expectedEnd:   20,
-			expectError:   false,
-		},
-		{
-			name:        "invalid format",
-			command:     "co",
-			expectError: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			start, end, err := ParseCopyLinesCommand(tc.command)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expectedStart, start)
-				assert.Equal(t, tc.expectedEnd, end)
-			}
-		})
-	}
 }

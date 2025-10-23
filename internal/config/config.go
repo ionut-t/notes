@@ -54,10 +54,6 @@ func GetStorage() string {
 	return dir
 }
 
-func GetVLineEnabledByDefault() bool {
-	return viper.GetBool("v_line")
-}
-
 func SetEditor(editor string) error {
 	if _, err := InitialiseConfigFile(); err != nil {
 		return err
@@ -69,19 +65,6 @@ func SetEditor(editor string) error {
 
 	viper.Set("editor", editor)
 
-	return viper.WriteConfig()
-}
-
-func SetDefaultVLineStatus(enabled bool) error {
-	if _, err := InitialiseConfigFile(); err != nil {
-		return err
-	}
-
-	if enabled == GetVLineEnabledByDefault() {
-		return nil
-	}
-
-	viper.Set("v_line", enabled)
 	return viper.WriteConfig()
 }
 
@@ -105,7 +88,6 @@ func InitialiseConfigFile() (string, error) {
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
 			viper.SetDefault("editor", GetEditor())
 			viper.SetDefault("storage", dir)
-			viper.SetDefault("v_line", false)
 
 			if err := viper.WriteConfig(); err != nil {
 				return "", err

@@ -26,9 +26,9 @@ var Right = key.NewBinding(
 	key.WithHelp("→ / l", "right"),
 )
 
-var Select = key.NewBinding(
-	key.WithKeys("enter"),
-	key.WithHelp("enter", "full screen"),
+var FullScreen = key.NewBinding(
+	key.WithKeys("F"),
+	key.WithHelp("F", "toggle full screen"),
 )
 
 var NewLine = key.NewBinding(
@@ -47,8 +47,8 @@ var Cancel = key.NewBinding(
 )
 
 var Quit = key.NewBinding(
-	key.WithKeys("esc", "q"),
-	key.WithHelp("esc / q", "quit"),
+	key.WithKeys("ctrl+c"),
+	key.WithHelp("ctrl+c", "quit"),
 )
 
 var QuitForm = key.NewBinding(
@@ -76,14 +76,14 @@ var ExitSearch = key.NewBinding(
 	key.WithHelp("esc", "exit search"),
 )
 
-var Editor = key.NewBinding(
+var ExternalEditor = key.NewBinding(
 	key.WithKeys("ctrl+e"),
-	key.WithHelp("ctrl+e", "open editor"),
+	key.WithHelp("ctrl+e", "open in external editor"),
 )
 
-var QuickEditor = key.NewBinding(
-	key.WithKeys("e"),
-	key.WithHelp("e", "open in editor"),
+var ToggleEdit = key.NewBinding(
+	key.WithKeys("E"),
+	key.WithHelp("E", "toggle edit"),
 )
 
 var Continue = key.NewBinding(
@@ -96,48 +96,9 @@ var Save = key.NewBinding(
 	key.WithHelp("enter", "save"),
 )
 
-var Rename = key.NewBinding(
-	key.WithKeys("r"),
-	key.WithHelp("r", "rename"),
-)
-
-var Delete = key.NewBinding(
-	key.WithKeys("ctrl+d"),
-	key.WithHelp("ctrl+d", "delete"),
-)
-
-var Copy = key.NewBinding(
-	key.WithKeys("c"),
-	key.WithHelp("c", "copy note to clipboard"),
-)
-
-var CopyLines = key.NewBinding(
-	key.WithKeys(":"),
-	key.WithHelp(":co", `copy lines to clipboard
-						 Examples:
-						 co 1 (copy line 1)
-		 				 co 1 2 (copy lines 1 to 2)
-		 				 co 1 1 (copy line 1)
-						 co 20 > 2 (copy lines 20 to 22)
-						 co 20 < 2 (copy lines 18 to 20)
-						 co 20 > -1 (copy lines 20 to the end)
-						 co 20 < -1 (copy lines 1 to 20)`,
-	),
-)
-
-var Command = key.NewBinding(
-	key.WithKeys(":"),
-	key.WithHelp(":", "enter command"),
-)
-
-var VLine = key.NewBinding(
-	key.WithKeys("V"),
-	key.WithHelp("V", "toggle line numbers"),
-)
-
 var New = key.NewBinding(
-	key.WithKeys("n"),
-	key.WithHelp("n", "new note"),
+	key.WithKeys("ctrl+n"),
+	key.WithHelp("ctrl+n", "new note"),
 )
 
 var Accept = key.NewBinding(
@@ -148,6 +109,11 @@ var Accept = key.NewBinding(
 var Reject = key.NewBinding(
 	key.WithKeys("n", "N"),
 	key.WithHelp("n", "no"),
+)
+
+var ChangeFocused = key.NewBinding(
+	key.WithKeys("tab"),
+	key.WithHelp("tab", "change focus between editor and list"),
 )
 
 type Model struct {
@@ -231,5 +197,5 @@ var SearchKeyMap = Model{
 var ListKeyMap = Model{
 	Up:     Up,
 	Down:   Down,
-	Select: Select,
+	Select: FullScreen,
 }
