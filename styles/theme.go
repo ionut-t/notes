@@ -66,6 +66,6 @@ func EditorTheme() editor.Theme {
 	return styles.EditorTheme()
 }
 
-func HighlighterTheme() string {
-	return styles.HighlighterTheme()
+func EditorLanguageTheme() string {
+	return styles.EditorLanguageTheme()
 }

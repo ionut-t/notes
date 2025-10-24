@@ -55,7 +55,7 @@ func NewAddModel(store *note.Store) AddModel {
 	textEditor.SetCursorMode(editor.CursorBlink)
 	textEditor.SetInsertMode()
 	textEditor.DisableCommandMode(true)
-	textEditor.SetLanguage("markdown", styles.HighlighterTheme())
+	textEditor.SetLanguage("markdown", styles.EditorLanguageTheme())
 	textEditor.SetExtraHighlightedContextLines(1000)
 	textEditor.Focus()
 

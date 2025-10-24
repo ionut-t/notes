@@ -50,7 +50,7 @@ func NewNoteModel(store *note.Store, width, height int) NoteModel {
 	textEditor := editor.New(80, 20)
 	textEditor.SetCursorMode(editor.CursorBlink)
 	textEditor.WithTheme(styles.EditorTheme())
-	textEditor.SetLanguage("markdown", styles.HighlighterTheme())
+	textEditor.SetLanguage("markdown", styles.EditorLanguageTheme())
 	textEditor.SetExtraHighlightedContextLines(1000)
 
 	textEditor.SetContent(note.Content)
