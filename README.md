@@ -4,11 +4,8 @@ A simple, lightweight command-line notes manager written in Go.
 
 ## Features
 
-- Create note
-  ![Add note demo](./add-note-demo.gif)
-
+- Create notes
 - View and manage notes
-  ![Notes manager demo](./manager-demo.gif)
 
 - Customizable storage location and editor
 
@@ -46,20 +43,7 @@ notes config --editor nvim
 
 # Set custom storage location
 notes config --storage ~/Documents/my-notes
-
-# Show line numbers in markdown preview by default
-notes config --v-line
 ```
-
-## Configuration
-
-Notes CLI stores its configuration in `~/.notes/.config.toml`. You can customize:
-
-| Setting   | Description                                      | Default                        |
-| --------- | ------------------------------------------------ | ------------------------------ |
-| `editor`  | Text editor to use                               | Environment `$EDITOR` or `vim` |
-| `storage` | Directory to store notes                         | `~/.notes`                     |
-| `v_line`  | Show line numbers in markdown preview by default | `false`                        |
 
 ## Directory Structure
 
