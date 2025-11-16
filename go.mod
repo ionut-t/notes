@@ -12,7 +12,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/ionut-t/coffee/markdown v0.0.0-20251022221334-acfbe382a572
 	github.com/ionut-t/coffee/styles v0.0.0-20251024200842-6cac28cee62e
-	github.com/ionut-t/goeditor/adapter-bubbletea v0.2.11
+	github.com/ionut-t/goeditor/adapter-bubbletea v0.2.12
 	github.com/ionut-t/goeditor/core v0.2.7
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0

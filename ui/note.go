@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -366,7 +367,6 @@ func (m *NoteModel) confirm(show bool) {
 
 func (m NoteModel) executeNoteDeletion() (NoteModel, tea.Cmd) {
 	err := m.store.DeleteCurrentNote()
-
 	if err != nil {
 		return m, dispatch(cmdErrorMsg(err))
 	}
@@ -379,7 +379,6 @@ func (m NoteModel) executeNoteDeletion() (NoteModel, tea.Cmd) {
 
 func (m NoteModel) renameNote(name string) (NoteModel, tea.Cmd) {
 	note, err := m.store.RenameCurrentNote(name)
-
 	if err != nil {
 		return m, dispatch(cmdErrorMsg(err))
 	}
@@ -388,4 +387,8 @@ func (m NoteModel) renameNote(name string) (NoteModel, tea.Cmd) {
 		dispatch(cmdNoteRenamedMsg{note}),
 		dispatch(cmdSuccessMsg(fmt.Sprintf("Note renamed to \"%s\"", note.Name))),
 	)
+}
+
+func (m *NoteModel) dispatchEditorError(err error) tea.Cmd {
+	return m.editor.DispatchError(err, 2*time.Second)
 }

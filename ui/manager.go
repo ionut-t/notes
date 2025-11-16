@@ -59,7 +59,6 @@ type ManagerModel struct {
 
 func NewManager(store *note.Store) *ManagerModel {
 	notes, err := store.LoadNotes()
-
 	if err != nil {
 		notes = []note.Note{}
 	}
@@ -187,7 +186,7 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.error = fmt.Errorf("failed to save note: %w", err)
 			m.successMessage = ""
 		} else {
-			m.successMessage = "Note saved successfully"
+			m.successMessage = "Note saved"
 			m.error = nil
 			m.noteView.updateContent()
 
@@ -198,6 +197,12 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return m, dispatchClearMsg()
 		}
+
+	case editor.QuitMsg:
+		return m, tea.Quit
+
+	case editor.ErrorMsg:
+		return m, m.noteView.dispatchEditorError(msg.Error)
 
 	case tea.KeyMsg:
 		if key.Matches(msg, keymap.ForceQuit) {
@@ -457,7 +462,6 @@ func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 
 func (m ManagerModel) handleEditorClose(isNew bool) (ManagerModel, tea.Cmd) {
 	notes, err := m.store.LoadNotes()
-
 	if err != nil {
 		return m, dispatch(cmdErrorMsg(err))
 	}

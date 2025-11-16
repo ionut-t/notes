@@ -27,8 +27,8 @@ var Right = key.NewBinding(
 )
 
 var FullScreen = key.NewBinding(
-	key.WithKeys("F"),
-	key.WithHelp("F", "toggle full screen"),
+	key.WithKeys("ctrl+f"),
+	key.WithHelp("ctrl+f", "toggle full screen"),
 )
 
 var NewLine = key.NewBinding(
