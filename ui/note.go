@@ -10,7 +10,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/ionut-t/coffee/styles"
 	editor "github.com/ionut-t/goeditor"
-	"github.com/ionut-t/goeditor/core"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/internal/utils"
@@ -28,8 +27,7 @@ type NoteModel struct {
 	confirmation     *huh.Confirm
 	showConfirmation bool
 
-	previousCursorPosition core.Position
-	currentNoteName        string
+	currentNoteName string
 }
 
 func NewNoteModel(store *note.Store, width, height int) NoteModel {

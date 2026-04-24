@@ -166,11 +166,10 @@ func (m *Model) renderFullHelpView() string {
 			renderedDescription.WriteString(renderedLine)
 		}
 
-		sb.WriteString(fmt.Sprintf("• %s%s%s\n",
+		fmt.Fprintf(&sb, "• %s%s%s\n",
 			renderedKey,
 			padding,
-			renderedDescription.String(),
-		))
+			renderedDescription.String())
 	}
 
 	return bg.Width(m.width).Padding(1, 1).Render(strings.Trim(sb.String(), "\n"))

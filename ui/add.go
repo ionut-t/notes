@@ -185,7 +185,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			tmpFile, _ := os.CreateTemp(os.TempDir(), "*.md")
-			tmpFile.WriteString(m.editor.GetCurrentContent())
+			_, _ = tmpFile.WriteString(m.editor.GetCurrentContent())
 
 			execCmd := tea.ExecProcess(exec.Command(m.store.GetEditor(), tmpFile.Name()), func(error) tea.Msg {
 				content, _ := os.ReadFile(tmpFile.Name())

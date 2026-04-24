@@ -25,7 +25,11 @@ func newAddCmd() *cobra.Command {
 }
 
 func runAddUI(store *note.Store) {
-	store.LoadNotes()
+	if _, err := store.LoadNotes(); err != nil {
+		fmt.Printf("Error loading notes: %v\n", err)
+		os.Exit(1)
+	}
+
 	p := tea.NewProgram(ui.NewAddModel(store))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running UI: %v\n", err)
