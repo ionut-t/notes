@@ -2,102 +2,141 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
-  contents: write # Needed for uploading release assets
+  contents: write
+  pull-requests: write
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - name: Run tests
+        run: go test ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - uses: golangci/golangci-lint-action@v9
+
+  govulncheck:
+    name: Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - uses: golang/govulncheck-action@v1
+        with:
+          checkout: false
+
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    needs: [test, lint, govulncheck]
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: go
+
   build-and-release:
     name: Build and Release
     runs-on: ubuntu-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # Fetch all history for git commands
-        
+          fetch-depth: 0
+
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: "1.26"
           check-latest: true
-          
-      - name: Set release version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          
+
       - name: Build binaries
         run: |
           mkdir -p dist
-          
-          # Get commit hash
+
+          VERSION=${{ needs.release-please.outputs.tag_name }}
           COMMIT=$(git rev-parse --short HEAD)
-          # Get current date
           BUILD_DATE=$(date -u +%d/%m/%Y)
-          # Define build flags
-          LDFLAGS="-X 'github.com/ionut-t/notes/cmd.version=${{ env.VERSION }}' -X 'github.com/ionut-t/notes/cmd.commit=$COMMIT' -X 'github.com/ionut-t/notes/cmd.date=$BUILD_DATE'"
-          
-          # Build for macOS (Apple Silicon)
-          GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/notes-darwin-arm64
+          LDFLAGS="-X 'github.com/ionut-t/notes/cmd.version=$VERSION' -X 'github.com/ionut-t/notes/cmd.commit=$COMMIT' -X 'github.com/ionut-t/notes/cmd.date=$BUILD_DATE'"
 
-          # Build for macOS (Intel)
-          GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-darwin-amd64
-                    
-          # Build for Linux (64-bit)
-          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-linux-amd64
-          
-          # Build for Windows (64-bit)
+          GOOS=darwin  GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/notes-darwin-arm64
+          GOOS=darwin  GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-darwin-amd64
+          GOOS=linux   GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-linux-amd64
           GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/notes-windows-amd64.exe
-          
-          # Make binaries executable
+
           chmod +x dist/*
-          
-          # Create checksums
-          cd dist
-          sha256sum * > checksums.txt
-          cd ..
-      
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: Release ${{ env.VERSION }}
-          draft: false
-          prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') }}
-          files: |
-            dist/*
-          body: |
-            # notes ${{ env.VERSION }}
-            
-            ## What's New
-            
-            <!-- Add release notes here -->
-            
-            ## Installation
+          cd dist && sha256sum * > checksums.txt
 
-            ### macOS (Apple Silicon)
-            ```bash
-            curl -L https://github.com/ionut-t/notes/releases/download/${{ env.VERSION }}/notes-darwin-arm64 -o notes && chmod +x notes
-            ```
-            
-            ### macOS (Intel)
-            ```bash
-            curl -L https://github.com/ionut-t/notes/releases/download/${{ env.VERSION }}/notes-darwin-amd64 -o notes && chmod +x notes
-            ```
-            
-            ### Linux
-            ```bash
-            curl -L https://github.com/ionut-t/notes/releases/download/${{ env.VERSION }}/notes-linux-amd64 -o notes && chmod +x notes
-            ```
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ needs.release-please.outputs.tag_name }} dist/* --clobber
 
-            ### For macOS and Linux
-            ```bash
-            sudo mv notes /usr/local/bin/
-            # or
-            mkdir -p ~/bin && mv notes ~/bin/ && echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
-            source ~/.zshrc
-            ```
-            
-            ### Windows
-            Download the binary from the assets below.
+      - name: Append installation instructions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${{ needs.release-please.outputs.tag_name }}
+          EXISTING=$(gh release view "$TAG" --json body --jq '.body')
+          gh release edit "$TAG" --notes "$EXISTING
+
+          ## Installation
+
+          ### macOS (Apple Silicon)
+          \`\`\`bash
+          curl -L https://github.com/ionut-t/notes/releases/download/$TAG/notes-darwin-arm64 -o notes && chmod +x notes
+          \`\`\`
+
+          ### macOS (Intel)
+          \`\`\`bash
+          curl -L https://github.com/ionut-t/notes/releases/download/$TAG/notes-darwin-amd64 -o notes && chmod +x notes
+          \`\`\`
+
+          ### Linux
+          \`\`\`bash
+          curl -L https://github.com/ionut-t/notes/releases/download/$TAG/notes-linux-amd64 -o notes && chmod +x notes
+          \`\`\`
+
+          ### For macOS and Linux
+          \`\`\`bash
+          sudo mv notes /usr/local/bin/
+          # or
+          mkdir -p ~/bin && mv notes ~/bin/ && echo 'export PATH=\"\$HOME/bin:\$PATH\"' >> ~/.zshrc
+          source ~/.zshrc
+          \`\`\`
+
+          ### Windows
+          Download the binary from the assets below."
