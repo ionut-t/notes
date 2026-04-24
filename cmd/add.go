@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/ionut-t/notes/note"
 	"github.com/ionut-t/notes/ui"
 	"github.com/spf13/cobra"

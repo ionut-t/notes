@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	_styles "github.com/ionut-t/coffee/styles"
 	"github.com/ionut-t/notes/internal/keymap"
-	"github.com/ionut-t/notes/internal/utils"
-	"github.com/ionut-t/notes/styles"
 )
+
+var styles = _styles.New(_styles.IsDark())
 
 type FullViewToggledMsg struct{}
 
@@ -28,7 +29,7 @@ type Model struct {
 	renderedFullView string
 }
 
-func (m Model) getKeys() keymap.Model {
+func (m *Model) getKeys() keymap.Model {
 	if m.Searching {
 		return keymap.SearchKeyMap
 	}
@@ -61,11 +62,11 @@ func New() Model {
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.FullView {
 		return m.viewport.View() + m.getPercentageBar()
 	}
@@ -73,13 +74,13 @@ func (m Model) View() string {
 	return lipgloss.NewStyle().Padding(0, 1).Render(m.help.View(m.getKeys()))
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	vp, cmd := m.viewport.Update(msg)
 	m.viewport = vp
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.help.Width = msg.Width
+		m.help.SetWidth(msg.Width)
 
 	case tea.KeyMsg:
 		switch {
@@ -87,34 +88,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.FullView = !m.FullView
 
 			if m.FullView {
-				m.renderedFullView = utils.Ternary(m.renderedFullView == "", m.renderFullHelpView(), m.renderedFullView)
-				height := min(lipgloss.Height(m.renderedFullView), m.height/2)
-				m.viewport.Height = height
-				m.viewport.Width = m.width
+				m.renderedFullView = m.renderFullHelpView()
+				height := min(lipgloss.Height(m.renderedFullView), m.height)
+				m.viewport.SetHeight(height)
+				m.viewport.SetWidth(m.width)
 				m.viewport.SetContent(m.renderedFullView)
 			}
 
-			return m, func() tea.Msg {
+			return *m, func() tea.Msg {
 				return FullViewToggledMsg{}
 			}
 		}
 	}
 
-	return m, cmd
+	return *m, cmd
 }
 
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+	m.help.SetWidth(width)
+
+	if m.FullView {
+		m.renderedFullView = m.renderFullHelpView()
+		h := min(lipgloss.Height(m.renderedFullView), m.height)
+		m.viewport.SetHeight(h)
+		m.viewport.SetWidth(m.width)
+		m.viewport.SetContent(m.renderedFullView)
+	}
 }
 
-func (m Model) renderFullHelpView() string {
+func (m *Model) renderFullHelpView() string {
 	var sb strings.Builder
 
 	bindings := keymap.ReplaceBinding(m.Keys.FullHelpBindings,
 		key.NewBinding(
-			key.WithKeys("?"),
-			key.WithHelp("?", "close help"),
+			key.WithKeys("f1", "alt+h"),
+			key.WithHelp("f1 / alt+h", "close help"),
 		),
 	)
 
@@ -166,7 +176,7 @@ func (m Model) renderFullHelpView() string {
 	return bg.Width(m.width).Padding(1, 1).Render(strings.Trim(sb.String(), "\n"))
 }
 
-func (m Model) getPercentageBar() string {
+func (m *Model) getPercentageBar() string {
 	scrollPercent := m.viewport.ScrollPercent()
 
 	if lipgloss.Height(m.renderedFullView) <= m.height/2 {
@@ -176,5 +186,4 @@ func (m Model) getPercentageBar() string {
 	percentage := styles.Accent.Background(styles.Crust.GetBackground()).Render(fmt.Sprintf("%3.f%%", scrollPercent*100))
 
 	return "+\n" + styles.Crust.Render(strings.Repeat(" ", m.width-lipgloss.Width(percentage))) + percentage
-
 }

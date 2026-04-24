@@ -3,7 +3,7 @@ package keymap
 import (
 	"reflect"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 )
 
 var Up = key.NewBinding(
@@ -62,8 +62,8 @@ var ForceQuit = key.NewBinding(
 )
 
 var Help = key.NewBinding(
-	key.WithKeys("?"),
-	key.WithHelp("?", "help"),
+	key.WithKeys("f1", "alt+h"),
+	key.WithHelp("f1 / alt+h", "help"),
 )
 
 var Search = key.NewBinding(
@@ -79,11 +79,6 @@ var ExitSearch = key.NewBinding(
 var ExternalEditor = key.NewBinding(
 	key.WithKeys("ctrl+e"),
 	key.WithHelp("ctrl+e", "open in external editor"),
-)
-
-var ToggleEdit = key.NewBinding(
-	key.WithKeys("E"),
-	key.WithHelp("E", "toggle edit"),
 )
 
 var Continue = key.NewBinding(
@@ -197,5 +192,5 @@ var SearchKeyMap = Model{
 var ListKeyMap = Model{
 	Up:     Up,
 	Down:   Down,
-	Select: FullScreen,
+	Select: Save,
 }

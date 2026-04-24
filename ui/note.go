@@ -2,35 +2,28 @@ package ui
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/ionut-t/coffee/markdown"
-	editor "github.com/ionut-t/goeditor/adapter-bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ionut-t/coffee/styles"
+	editor "github.com/ionut-t/goeditor"
 	"github.com/ionut-t/goeditor/core"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
-	"github.com/ionut-t/notes/styles"
 )
 
 type NoteModel struct {
 	store            *note.Store
-	viewport         viewport.Model
 	width, height    int
 	help             help.Model
 	successMessage   string
 	error            error
-	markdown         markdown.Model
 	fullScreen       bool
-	showEditor       bool
 	editor           editor.Model
 	confirmation     *huh.Confirm
 	showConfirmation bool
@@ -42,16 +35,10 @@ type NoteModel struct {
 func NewNoteModel(store *note.Store, width, height int) NoteModel {
 	note, _ := store.GetCurrentNote()
 
-	vp := viewport.New(width, height)
-
-	md := markdown.New()
-
-	md.Render(note.Content)
-
 	textEditor := editor.New(80, 20)
 	textEditor.SetCursorMode(editor.CursorBlink)
-	textEditor.WithTheme(styles.EditorTheme())
-	textEditor.SetLanguage("markdown", styles.EditorLanguageTheme())
+	textEditor.WithTheme(styles.EditorTheme(_styles))
+	textEditor.SetLanguage("markdown", styles.EditorLanguageTheme(true))
 	textEditor.SetExtraHighlightedContextLines(1000)
 
 	textEditor.SetContent(note.Content)
@@ -82,28 +69,25 @@ func NewNoteModel(store *note.Store, width, height int) NoteModel {
 		Confirm: huh.NewDefaultKeyMap().Confirm,
 	})
 
-	confirmation.WithTheme(styles.ThemeCatppuccin())
+	confirmation.WithTheme(styles.HuhThemeCatppuccin{Styles: _styles})
 
 	return NoteModel{
 		store:           store,
-		viewport:        vp,
 		width:           width,
 		height:          height,
 		help:            helpMenu,
-		markdown:        md,
 		editor:          textEditor,
 		confirmation:    confirmation,
-		showEditor:      true,
 		currentNoteName: note.Name,
 	}
 }
 
-func (m NoteModel) Init() tea.Cmd {
+func (m *NoteModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m NoteModel) View() string {
-	view := utils.Ternary(m.showEditor, m.editor.View(), m.viewport.View())
+func (m *NoteModel) View() string {
+	view := m.editor.View()
 
 	if m.showConfirmation {
 		view = lipgloss.JoinVertical(
@@ -120,7 +104,6 @@ func (m NoteModel) View() string {
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		view,
-		m.statusBarView(),
 	)
 
 	if m.help.FullView {
@@ -134,11 +117,8 @@ func (m NoteModel) View() string {
 	return content
 }
 
-func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
+func (m *NoteModel) Update(msg tea.Msg) (NoteModel, tea.Cmd) {
+	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case editor.DeleteFileMsg:
@@ -162,7 +142,7 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					m.editor.Blur()
 
-					return m, dispatch(changesDiscardedMsg{})
+					return *m, dispatch(changesDiscardedMsg{})
 				}
 
 				m.confirm(false)
@@ -172,12 +152,9 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	m.viewport, cmd = m.viewport.Update(msg)
-	cmds = append(cmds, cmd)
-
 	if m.fullScreen {
 		helpModel, cmd := m.help.Update(msg)
-		m.help = helpModel.(help.Model)
+		m.help = helpModel
 		m.help.SetSize(m.width, m.height)
 		cmds = append(cmds, cmd)
 	}
@@ -188,134 +165,42 @@ func (m NoteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	} else {
 		editorModel, cmd := m.editor.Update(msg)
-		m.editor = editorModel.(editor.Model)
+		m.editor = editorModel
 		cmds = append(cmds, cmd)
 	}
 
-	return m, tea.Batch(cmds...)
-}
-
-func (m NoteModel) statusBarView() string {
-	if !m.fullScreen {
-		return ""
-	}
-
-	bg := styles.Surface0.GetBackground()
-
-	if m.successMessage != "" {
-		return styles.Success.Background(bg).Width(m.width).Padding(0, 1).Render(m.successMessage)
-	}
-
-	if m.error != nil {
-		return styles.Error.Background(bg).Width(m.width).Padding(0, 1).Render(m.error.Error())
-	}
-
-	separator := styles.Surface0.Render(" | ")
-
-	note, _ := m.store.GetCurrentNote()
-
-	name := styles.Primary.Background(bg).Render(note.Name)
-
-	modifiedDate := styles.Accent.Background(bg).Render("Last Modified " + note.UpdatedAt.Format("02/01/2006 15:04"))
-
-	noteInfo := styles.Surface0.Padding(0, 1).Render(
-		name + separator + modifiedDate,
-	)
-
-	lineNumbers := styles.Info.Background(bg).Render(strconv.Itoa(m.getLineNumbers()))
-
-	scroll := styles.Surface0.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
-
-	helpText := styles.Info.Background(bg).PaddingRight(1).Render("? Help")
-
-	displayedInfoWidth := m.viewport.Width -
-		lipgloss.Width(noteInfo) -
-		lipgloss.Width(scroll) -
-		lipgloss.Width(lineNumbers) -
-		lipgloss.Width(helpText) -
-		2*lipgloss.Width(separator)
-
-	spaces := styles.Surface0.Render(strings.Repeat(" ", max(0, displayedInfoWidth)))
-
-	return styles.Surface0.Width(m.width).Padding(0, 0).Render(
-		lipgloss.JoinHorizontal(
-			lipgloss.Right,
-			noteInfo,
-			spaces,
-			lineNumbers,
-			separator,
-			scroll,
-			separator,
-			helpText,
-		),
-	)
-}
-
-func (m NoteModel) getLineNumbers() int {
-	if note, ok := m.store.GetCurrentNote(); ok {
-		return len(strings.Split(note.Content, "\n"))
-	}
-
-	return 0
+	return *m, tea.Batch(cmds...)
 }
 
 func (m *NoteModel) setSize(width, height int) {
 	m.width = width
 	m.height = height
 
-	statusBarViewHeight := utils.Ternary(m.fullScreen, lipgloss.Height(m.statusBarView()), 0)
 	helpHeight := utils.Ternary(m.help.FullView, lipgloss.Height(m.help.View()), 0)
-
-	m.viewport.Height = height - helpHeight - statusBarViewHeight
-	m.viewport.Width = width
 
 	if m.showConfirmation {
 		m.editor.SetSize(width, max(height-helpHeight-lipgloss.Height(m.confirmation.View()), 0))
 	} else {
-		m.editor.SetSize(width, max(height-helpHeight-statusBarViewHeight, 0))
+		m.editor.SetSize(width, max(height-helpHeight, 0))
 	}
 }
 
 func (m *NoteModel) updateContent() {
-	m.previousCursorPosition = m.editor.GetCursorPosition()
-
-	m.viewport.Height = m.height
-	m.viewport.Width = m.width
-	m.viewport.SetYOffset(0)
-	m.editor.SetSize(m.width, m.height)
-	m.render()
-
-	texteditor, _ := m.editor.Update(nil)
-	m.editor = texteditor.(editor.Model)
-}
-
-func (m *NoteModel) render() {
 	if note, ok := m.store.GetCurrentNote(); ok {
-		if out, err := m.markdown.Render(note.Content); err != nil {
-			m.error = fmt.Errorf("failed to render note content: %w", err)
-		} else {
-			m.viewport.SetContent(out)
-			m.viewport.YOffset = 0
+		if m.currentNoteName != note.Name {
+			m.editor.SetContent(note.Content)
+			m.currentNoteName = note.Name
+
+			if err := m.editor.SetCursorPosition(0, 0); err != nil {
+				m.error = fmt.Errorf("failed to set cursor position: %w", err)
+			}
 		}
-
-		m.editor.SetContent(note.Content)
-
-		var cursorPosition core.Position
-		if m.currentNoteName == note.Name {
-			cursorPosition = m.previousCursorPosition
-		} else {
-			cursorPosition = core.Position{Row: 0, Col: 0}
-		}
-
-		if err := m.editor.SetCursorPosition(cursorPosition.Row, cursorPosition.Col); err != nil {
-			m.error = fmt.Errorf("failed to set cursor position: %w", err)
-		}
-
-		m.currentNoteName = note.Name
-
-	} else {
-		m.viewport.SetContent(` Press "ctrl+n" to create a new note`)
 	}
+
+	m.setSize(m.width, m.height)
+
+	editorModel, _ := m.editor.Update(nil)
+	m.editor = editorModel
 }
 
 func (m *NoteModel) isEditing() bool {
@@ -326,37 +211,16 @@ func (m *NoteModel) hasChanges() bool {
 	return m.editor.HasChanges()
 }
 
-func (m *NoteModel) toggleEdit() {
-	m.showEditor = !m.showEditor
-	m.updateContent()
-
-	if m.showEditor {
-		m.editor.Focus()
-		texteditor, _ := m.editor.Update(nil)
-		m.editor = texteditor.(editor.Model)
-	} else {
-		m.editor.Blur()
-	}
-
-	m.setSize(m.width, m.height)
-}
-
 func (m *NoteModel) focus() tea.Cmd {
-	if m.showEditor {
-		m.editor.Focus()
-		return m.editor.CursorBlink()
-	}
-
-	return nil
+	m.editor.Focus()
+	return m.editor.CursorBlink()
 }
 
 func (m *NoteModel) blur() {
-	if m.showEditor {
-		m.editor.Blur()
+	m.editor.Blur()
 
-		if m.editor.IsCommandMode() {
-			m.editor.SetNormalMode()
-		}
+	if m.editor.IsCommandMode() {
+		m.editor.SetNormalMode()
 	}
 }
 

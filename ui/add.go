@@ -6,18 +6,16 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
-	editor "github.com/ionut-t/goeditor/adapter-bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ionut-t/coffee/styles"
+	editor "github.com/ionut-t/goeditor"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/internal/utils"
 	"github.com/ionut-t/notes/note"
-	"github.com/ionut-t/notes/styles"
 )
 
 type addView int
@@ -55,7 +53,7 @@ func NewAddModel(store *note.Store) AddModel {
 	textEditor.SetCursorMode(editor.CursorBlink)
 	textEditor.SetInsertMode()
 	textEditor.DisableCommandMode(true)
-	textEditor.SetLanguage("markdown", styles.EditorLanguageTheme())
+	textEditor.SetLanguage("markdown", styles.EditorLanguageTheme(true))
 	textEditor.SetExtraHighlightedContextLines(1000)
 	textEditor.Focus()
 
@@ -70,13 +68,13 @@ func NewAddModel(store *note.Store) AddModel {
 		Affirmative("Yes").
 		Negative("No")
 
-	fileName.WithTheme(styles.ThemeCatppuccin())
+	fileName.WithTheme(styles.HuhThemeCatppuccin{Styles: _styles})
 
 	confirmation.WithKeyMap(&huh.KeyMap{
 		Confirm: huh.NewDefaultKeyMap().Confirm,
 	})
 
-	confirmation.WithTheme(styles.ThemeCatppuccin())
+	confirmation.WithTheme(styles.HuhThemeCatppuccin{Styles: _styles})
 
 	helpMenu := help.New()
 	helpMenu.SetKeyMap(keymap.DefaultKeyMap)
@@ -101,19 +99,17 @@ func (m *AddModel) markAsIntegrated() {
 	m.standalone = false
 	m.setContentHeight()
 	em, _ := m.editor.Update(nil)
-	m.editor = em.(editor.Model)
+	m.editor = em
 	m.editor.SetNormalMode()
 	m.filename.WithWidth(min(m.width-2, 50))
 }
 
 func (m AddModel) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, m.editor.CursorBlink(), tea.SetWindowTitle("Notes"))
+	return tea.Batch(m.editor.CursorBlink())
 }
 
 func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var (
-		cmds []tea.Cmd
-	)
+	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 
@@ -127,7 +123,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editor.SetBytes(msg)
 
 		content, cmd := m.editor.Update(msg)
-		m.editor = content.(editor.Model)
+		m.editor = content
 		cmds = append(cmds, cmd)
 
 	case tea.KeyMsg:
@@ -226,7 +222,6 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				content := m.editor.GetCurrentContent()
 
 				noteName, err := validateNoteName(m.filename)
-
 				if err != nil {
 					m.filenameError = err
 					break
@@ -283,7 +278,7 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.view {
 	case addContent:
 		content, cmd := m.editor.Update(msg)
-		m.editor = content.(editor.Model)
+		m.editor = content
 		cmds = append(cmds, cmd)
 
 	case addName:
@@ -305,32 +300,34 @@ func (m AddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m AddModel) View() string {
+func (m AddModel) View() tea.View {
 	if m.view == abbortAdd {
-		return ""
+		return tea.NewView("")
 	}
 
 	if m.standalone {
-		return lipgloss.NewStyle().
-			Border(addViewBorder).
-			BorderForeground(styles.Accent.GetForeground()).
-			Padding(1, 2).
-			Margin(0, 1).
-			Render(m.getView())
+		return tea.NewView(
+			lipgloss.NewStyle().
+				Border(addViewBorder).
+				BorderForeground(_styles.Accent.GetForeground()).
+				Padding(1, 2).
+				Margin(0, 1).
+				Render(m.getView()),
+		)
 	}
 
-	return lipgloss.NewStyle().
+	return tea.NewView(lipgloss.NewStyle().
 		Padding(1, 1).
-		Render(m.getView())
+		Render(m.getView()))
 }
 
 func (m AddModel) getView() string {
 	if m.err != nil {
-		return styles.Error.Render(m.err.Error())
+		return _styles.Error.Render(m.err.Error())
 	}
 
 	if m.success {
-		return styles.Success.Render("Note created successfully!")
+		return _styles.Success.Render("Note created successfully!")
 	}
 
 	footer := utils.Ternary(m.showConfirmation, m.confirmation.View(), m.help.View())
@@ -340,7 +337,7 @@ func (m AddModel) getView() string {
 		return m.editor.View() + "\n\n" + footer
 	case addName:
 		if err := m.filenameError; err != nil {
-			return m.filename.View() + "\n" + styles.Error.Render(err.Error()) + "\n\n" + footer
+			return m.filename.View() + "\n" + _styles.Error.Render(err.Error()) + "\n\n" + footer
 		}
 
 		return m.filename.View() + "\n\n" + footer

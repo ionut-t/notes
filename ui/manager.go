@@ -4,25 +4,25 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	editor "github.com/ionut-t/goeditor/adapter-bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ionut-t/coffee/styles"
+	editor "github.com/ionut-t/goeditor"
 	"github.com/ionut-t/notes/internal/help"
 	"github.com/ionut-t/notes/internal/keymap"
 	"github.com/ionut-t/notes/note"
-	"github.com/ionut-t/notes/styles"
 )
 
 var (
 	viewPadding  = lipgloss.NewStyle().Padding(1, 1)
 	activeBorder = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(styles.Text.GetForeground())
+			BorderForeground(_styles.Text.GetForeground())
 	inactiveBorder = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(styles.Overlay0.
+			BorderForeground(_styles.Overlay0.
 				GetForeground())
 	splitViewSeparator      = " "
 	splitViewSeparatorWidth = lipgloss.Width(splitViewSeparator)
@@ -67,7 +67,7 @@ func NewManager(store *note.Store) *ManagerModel {
 
 	delegate := list.NewDefaultDelegate()
 
-	delegate.Styles = styles.ListItemStyles()
+	delegate.Styles = styles.ListItemStyles(_styles, true)
 
 	m := ManagerModel{
 		store:    store,
@@ -79,18 +79,15 @@ func NewManager(store *note.Store) *ManagerModel {
 
 	m.list.Title = "Notes"
 
-	m.list.Styles = styles.ListStyles()
+	m.list.Styles = styles.ListStyles(_styles, true)
 
 	m.list.KeyMap = list.KeyMap{
 		CursorUp:             keymap.Up,
 		CursorDown:           keymap.Down,
 		Filter:               keymap.Search,
-		AcceptWhileFiltering: keymap.FullScreen,
+		AcceptWhileFiltering: keymap.Save,
 		CancelWhileFiltering: keymap.Cancel,
 	}
-
-	m.list.FilterInput.PromptStyle = styles.Accent
-	m.list.FilterInput.Cursor.Style = styles.Accent
 
 	m.list.InfiniteScrolling = true
 	m.list.SetShowHelp(false)
@@ -119,16 +116,17 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
-func (m ManagerModel) Init() tea.Cmd {
-	return tea.SetWindowTitle("Notes")
+func (m *ManagerModel) Init() tea.Cmd {
+	return nil
 }
 
-func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.handleWindowSize(msg)
+		return m, nil
 
 	case help.FullViewToggledMsg:
 		return m, m.dispatchWindowSizeMsg()
@@ -143,7 +141,6 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.RemoveItem(m.list.Index())
 		if item, ok := m.list.SelectedItem().(item); ok {
 			m.store.SetCurrentNoteName(item.title)
-			m.noteView.render()
 		}
 
 	case cmdSuccessMsg:
@@ -220,11 +217,6 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keymap.FullScreen):
 			return m.handleFullScreen()
 
-		case key.Matches(msg, keymap.ToggleEdit):
-			if !m.noteView.isEditing() {
-				m.noteView.toggleEdit()
-			}
-
 		case key.Matches(msg, keymap.ExternalEditor):
 			if ok, cmd := m.triggerNoteEditor(); ok {
 				return m, cmd
@@ -286,20 +278,28 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.store.SetCurrentNoteName(selected)
 			width, height := m.getAvailableSizes()
-			m.noteView.setSize(width-min(width/2, minListWidth), height)
+			if m.view == splitView {
+				hFBS := activeBorder.GetHorizontalFrameSize()
+				vFBS := activeBorder.GetVerticalFrameSize()
+				listWidthBox := min(width/2, minListWidth)
+				noteInnerWidth := max(0, width-listWidthBox-splitViewSeparatorWidth-hFBS)
+				m.noteView.setSize(noteInnerWidth, max(0, height-vFBS))
+			} else {
+				m.noteView.setSize(width, height)
+			}
 			m.noteView.updateContent()
 
 		case noteFocused:
 			if !m.help.FullView {
 				noteViewModel, cmd := m.noteView.Update(msg)
-				m.noteView = noteViewModel.(NoteModel)
+				m.noteView = noteViewModel
 				cmds = append(cmds, cmd)
 			}
 		}
 
-		if m.view != noteView {
+		if m.view != noteView || m.help.FullView {
 			helpModel, cmd := m.help.Update(msg)
-			m.help = helpModel.(help.Model)
+			m.help = helpModel
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -313,34 +313,47 @@ func (m ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m ManagerModel) View() string {
+func (m *ManagerModel) View() tea.View {
+	view := m.getView()
+	view.WindowTitle = "Notes"
+	view.AltScreen = true
+
+	return view
+}
+
+func (m *ManagerModel) getView() tea.View {
 	if m.addNote.active {
 		return m.addNote.View()
 	}
 
+	if m.help.FullView {
+		return tea.NewView(m.help.View())
+	}
+
 	switch m.view {
 	case listView:
-		return viewPadding.Render(m.list.View()) + "\n" + m.statusBarView()
+		return tea.NewView(viewPadding.Render(m.list.View()) + "\n" + m.statusBarView())
 
 	case noteView:
-		return m.noteView.View()
+		return tea.NewView(m.noteView.View())
 
 	case splitView:
-		return m.getSplitView()
+		return tea.NewView(m.getSplitView())
 
 	default:
-		return ""
+		return tea.NewView("")
 	}
 }
 
-func (m ManagerModel) getSplitView() string {
-	horizontalFrameSize := viewPadding.GetHorizontalFrameSize()
-	horizontalFrameBorderSize := activeBorder.GetHorizontalFrameSize()
+func (m *ManagerModel) getSplitView() string {
+	availableWidth, availableHeight := m.getAvailableSizes()
 
-	availableWidth := m.width - horizontalFrameSize
+	if availableWidth < 10 || availableHeight < 5 {
+		return ""
+	}
 
-	listWidth := min(minListWidth, availableWidth/2) - horizontalFrameBorderSize*2 - splitViewSeparatorWidth
-	noteWidth := availableWidth - listWidth - horizontalFrameBorderSize*2 - splitViewSeparatorWidth
+	listWidthBox := min(availableWidth/2, minListWidth)
+	noteWidthBox := max(0, availableWidth-listWidthBox-splitViewSeparatorWidth)
 
 	var joinedContent string
 
@@ -348,24 +361,26 @@ func (m ManagerModel) getSplitView() string {
 		joinedContent = lipgloss.JoinHorizontal(
 			lipgloss.Left,
 			activeBorder.
-				Width(listWidth).
+				Width(listWidthBox).
+				Height(availableHeight).
 				Render(m.list.View()),
 			splitViewSeparator,
 			inactiveBorder.
-				Width(noteWidth).
-				Height(m.list.Height()).
+				Width(noteWidthBox).
+				Height(availableHeight).
 				Render(m.noteView.View()),
 		)
 	} else {
 		joinedContent = lipgloss.JoinHorizontal(
 			lipgloss.Left,
 			inactiveBorder.
-				Width(listWidth).
+				Width(listWidthBox).
+				Height(availableHeight).
 				Render(m.list.View()),
 			splitViewSeparator,
 			activeBorder.
-				Width(noteWidth).
-				Height(m.list.Height()).
+				Width(noteWidthBox).
+				Height(availableHeight).
 				Render(m.noteView.View()),
 		)
 	}
@@ -375,17 +390,13 @@ func (m ManagerModel) getSplitView() string {
 	return renderedView + "\n" + m.statusBarView()
 }
 
-func (m ManagerModel) getViewInCmdMode() string {
-	return viewPadding.Render(m.list.View()) + "\n" + m.statusBarView()
-}
-
-func (m ManagerModel) statusBarView() string {
+func (m *ManagerModel) statusBarView() string {
 	if m.error != nil {
-		return styles.Error.Margin(0, 2).Render(m.error.Error())
+		return _styles.Error.Margin(0, 2).Render(m.error.Error())
 	}
 
 	if m.successMessage != "" {
-		return styles.Success.Margin(0, 2).Render(m.successMessage)
+		return _styles.Success.Margin(0, 2).Render(m.successMessage)
 	}
 
 	if m.list.FilterState() == list.Filtering {
@@ -424,6 +435,10 @@ func processNotes(notes []note.Note) []list.Item {
 }
 
 func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
+	if msg.Width <= 0 || msg.Height <= 0 {
+		return
+	}
+
 	if msg.Width < 2*minListWidth {
 		switch m.view {
 		case splitView:
@@ -435,13 +450,12 @@ func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 
 	m.width, m.height = msg.Width, msg.Height
 
-	availableWidth, availableHeight := m.getAvailableSizes()
+	m.help.SetSize(max(0, msg.Width-6), msg.Height)
 
-	m.help.SetSize(msg.Width, msg.Height)
+	availableWidth, availableHeight := m.getAvailableSizes()
 
 	if m.view == listView {
 		m.list.SetSize(availableWidth, availableHeight)
-		m.help.SetSize(msg.Width, msg.Height)
 	}
 
 	if m.view == noteView {
@@ -449,18 +463,25 @@ func (m *ManagerModel) handleWindowSize(msg tea.WindowSizeMsg) {
 	}
 
 	if m.view == splitView {
-		listWidth := min(availableWidth/2, minListWidth)
+		hFBS := activeBorder.GetHorizontalFrameSize()
+		vFBS := activeBorder.GetVerticalFrameSize()
+
+		listWidthBox := min(availableWidth/2, minListWidth)
+		listInnerWidth := max(0, listWidthBox-hFBS)
+		noteInnerWidth := max(0, availableWidth-listWidthBox-splitViewSeparatorWidth-hFBS)
 
 		// Set list dimensions
-		m.list.SetHeight(availableHeight)
-		m.list.SetWidth(listWidth)
+		m.list.SetHeight(max(0, availableHeight-vFBS))
+		m.list.SetWidth(listInnerWidth)
 
 		// Set note view dimensions
-		m.noteView.setSize(availableWidth-listWidth, availableHeight)
+		m.noteView.setSize(noteInnerWidth, max(0, availableHeight-vFBS))
 	}
+
+	m.noteView.updateContent()
 }
 
-func (m ManagerModel) handleEditorClose(isNew bool) (ManagerModel, tea.Cmd) {
+func (m *ManagerModel) handleEditorClose(isNew bool) (*ManagerModel, tea.Cmd) {
 	notes, err := m.store.LoadNotes()
 	if err != nil {
 		return m, dispatch(cmdErrorMsg(err))
@@ -483,11 +504,11 @@ func (m ManagerModel) handleEditorClose(isNew bool) (ManagerModel, tea.Cmd) {
 
 	return m, tea.Sequence(
 		m.dispatchWindowSizeMsg(),
-		tea.EnableMouseCellMotion,
+		// tea.EnableMouseCellMotion,
 	)
 }
 
-func (m ManagerModel) handleQuit() (ManagerModel, tea.Cmd) {
+func (m *ManagerModel) handleQuit() (*ManagerModel, tea.Cmd) {
 	if m.help.FullView {
 		m.help.FullView = false
 		return m, dispatch(help.FullViewToggledMsg{})
@@ -504,7 +525,7 @@ func (m ManagerModel) handleQuit() (ManagerModel, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func (m ManagerModel) handleFullScreen() (ManagerModel, tea.Cmd) {
+func (m *ManagerModel) handleFullScreen() (*ManagerModel, tea.Cmd) {
 	if len(m.list.Items()) == 0 ||
 		m.noteView.isEditing() {
 		return m, nil
@@ -554,13 +575,13 @@ func (m ManagerModel) dispatchWindowSizeMsg() tea.Cmd {
 	return dispatch(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 }
 
-func (m ManagerModel) getAvailableSizes() (int, int) {
+func (m *ManagerModel) getAvailableSizes() (int, int) {
 	h, v := viewPadding.GetFrameSize()
 
 	statusBarHeight := lipgloss.Height(m.statusBarView())
 
-	availableHeight := m.height - v - statusBarHeight - activeBorder.GetBorderBottomSize()
-	availableWidth := m.width - h
+	availableHeight := max(0, m.height-v-statusBarHeight)
+	availableWidth := max(0, m.width-h)
 
 	return availableWidth, availableHeight
 }
