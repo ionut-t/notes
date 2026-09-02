@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/ionut-t/notes/compare/v1.1.0...v1.2.0) (2026-09-02)
+
+
+### Miscellaneous Chores
+
+* release 1.2.0 ([5375c89](https://github.com/ionut-t/notes/commit/5375c8903b13c9fd134455242a9601478f754a57))
+
 ## [1.1.0](https://github.com/ionut-t/notes/compare/v1.0.0...v1.1.0) (2026-06-11)
 
 
