@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -199,6 +201,42 @@ func (m *NoteModel) updateContent() {
 
 	editorModel, _ := m.editor.Update(nil)
 	m.editor = editorModel
+}
+
+// reloadContent refreshes the editor with the note's content from disk while
+// keeping the cursor in place. It returns false and leaves the editor untouched
+// when the content changed on disk but the editor has unsaved changes.
+func (m *NoteModel) reloadContent() bool {
+	note, ok := m.store.GetCurrentNote()
+	if !ok || note.Name != m.currentNoteName {
+		m.updateContent()
+		return true
+	}
+
+	if m.editor.GetCurrentContent() == note.Content {
+		return true
+	}
+
+	if m.hasChanges() {
+		return false
+	}
+
+	position := m.editor.GetCursorPosition()
+	m.editor.SetContent(note.Content)
+
+	lines := strings.Split(note.Content, "\n")
+	row := min(position.Row, len(lines)-1)
+	col := min(position.Col, utf8.RuneCountInString(lines[row]))
+
+	// an empty buffer has no cursor position to restore
+	if note.Content != "" {
+		if err := m.editor.SetCursorPosition(row, col); err != nil {
+			m.error = fmt.Errorf("failed to set cursor position: %w", err)
+		}
+	}
+
+	m.updateContent()
+	return true
 }
 
 func (m *NoteModel) isEditing() bool {

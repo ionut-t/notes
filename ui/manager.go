@@ -55,6 +55,11 @@ type ManagerModel struct {
 	width, height  int
 	successMessage string
 	addNote        AddModel
+	watcher        *note.Watcher
+
+	// set when a reload refilters the list, so the current note
+	// is selected again once the filter results arrive
+	reselectAfterFilter bool
 }
 
 func NewManager(store *note.Store) *ManagerModel {
@@ -75,6 +80,12 @@ func NewManager(store *note.Store) *ManagerModel {
 		help:     help.New(),
 		noteView: NewNoteModel(store, 100, 20),
 		error:    err,
+	}
+
+	if watcher, watchErr := store.Watch(); watchErr == nil {
+		m.watcher = watcher
+	} else if m.error == nil {
+		m.error = fmt.Errorf("failed to watch notes directory: %w", watchErr)
 	}
 
 	m.list.Title = "Notes"
@@ -117,7 +128,16 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 func (m *ManagerModel) Init() tea.Cmd {
-	return nil
+	return m.waitForNotesChange()
+}
+
+// Close stops watching the notes directory.
+func (m *ManagerModel) Close() error {
+	if m.watcher == nil {
+		return nil
+	}
+
+	return m.watcher.Close()
 }
 
 func (m *ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -136,6 +156,35 @@ func (m *ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case noteAddedMsg:
 		return m.handleEditorClose(true)
+
+	case list.FilterMatchesMsg:
+		// the list only receives messages while focused, so results of
+		// refiltering after a reload would be lost when the note is focused
+		if m.focusedView != listFocused || m.reselectAfterFilter {
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+
+			if m.reselectAfterFilter {
+				m.reselectAfterFilter = false
+				m.selectCurrentNote()
+			}
+
+			return m, cmd
+		}
+
+	case notesChangedMsg:
+		return m, m.loadNotes()
+
+	case notesLoadedMsg:
+		// only wait for the next change once this one is applied, so that
+		// loads never overlap and a stale result can't overwrite a newer one
+		return m, tea.Batch(m.applyLoadedNotes(msg), m.waitForNotesChange())
+
+	case watcherErrorMsg:
+		return m, tea.Batch(
+			dispatch(cmdErrorMsg(fmt.Errorf("watching notes for changes: %w", msg.err))),
+			m.waitForNotesChange(),
+		)
 
 	case cmdNoteDeletedMsg:
 		m.list.RemoveItem(m.list.Index())
@@ -506,6 +555,83 @@ func (m *ManagerModel) handleEditorClose(isNew bool) (*ManagerModel, tea.Cmd) {
 		m.dispatchWindowSizeMsg(),
 		// tea.EnableMouseCellMotion,
 	)
+}
+
+func (m *ManagerModel) waitForNotesChange() tea.Cmd {
+	if m.watcher == nil {
+		return nil
+	}
+
+	changes, errs := m.watcher.Changes(), m.watcher.Errors()
+
+	return func() tea.Msg {
+		select {
+		case <-changes:
+			return notesChangedMsg{}
+		case err := <-errs:
+			return watcherErrorMsg{err}
+		}
+	}
+}
+
+// loadNotes reads the notes from disk outside the update loop.
+func (m *ManagerModel) loadNotes() tea.Cmd {
+	store := m.store
+
+	return func() tea.Msg {
+		notes, err := store.ReadNotes()
+		return notesLoadedMsg{notes: notes, err: err}
+	}
+}
+
+// applyLoadedNotes updates the list with the notes read from disk, keeping
+// the selected note and any active filter when possible.
+func (m *ManagerModel) applyLoadedNotes(msg notesLoadedMsg) tea.Cmd {
+	if msg.err != nil {
+		return dispatch(cmdErrorMsg(msg.err))
+	}
+
+	m.store.SetNotes(msg.notes)
+
+	cmds := []tea.Cmd{m.list.SetItems(processNotes(msg.notes))}
+
+	if m.list.FilterState() == list.Unfiltered {
+		m.selectCurrentNote()
+	} else {
+		// filtered items are updated asynchronously by the list
+		m.reselectAfterFilter = true
+	}
+
+	if !m.noteView.reloadContent() {
+		m.error = fmt.Errorf("note changed on disk; save to overwrite or discard your changes to reload")
+		cmds = append(cmds, dispatchClearMsg())
+	}
+
+	cmds = append(cmds, m.dispatchWindowSizeMsg())
+
+	return tea.Batch(cmds...)
+}
+
+// selectCurrentNote moves the list cursor to the current note, or to the
+// first visible note when the current one is no longer visible.
+func (m *ManagerModel) selectCurrentNote() {
+	visible := m.list.VisibleItems()
+
+	if current, ok := m.store.GetCurrentNote(); ok {
+		for i, listItem := range visible {
+			if listItem.(item).title == current.Name {
+				m.list.Select(i)
+				return
+			}
+		}
+	}
+
+	m.list.ResetSelected()
+
+	if len(visible) > 0 {
+		m.store.SetCurrentNoteName(visible[0].(item).title)
+		m.noteView.updateContent()
+	}
 }
 
 func (m *ManagerModel) handleQuit() (*ManagerModel, tea.Cmd) {

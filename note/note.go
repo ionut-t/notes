@@ -197,6 +197,19 @@ func (s Store) RenameNote(currentName, newName string) (Note, error) {
 }
 
 func (s *Store) LoadNotes() ([]Note, error) {
+	notes, err := s.ReadNotes()
+	if err != nil {
+		return nil, err
+	}
+
+	s.SetNotes(notes)
+
+	return s.notes, nil
+}
+
+// ReadNotes reads the notes from disk sorted by last update, without
+// modifying the store, so it's safe to call outside the UI goroutine.
+func (s *Store) ReadNotes() ([]Note, error) {
 	notes := []Note{}
 
 	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
@@ -208,18 +221,22 @@ func (s *Store) LoadNotes() ([]Note, error) {
 			return err
 		}
 
-		// Skip directories and non-markdown files
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+		// Skip directories and non-note files
+		if d.IsDir() || !isNoteFile(d.Name()) {
 			return nil
 		}
 
 		note, err := s.loadNoteFromFile(path)
 		if err != nil {
+			// deleted while walking, or a dangling symlink
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+
 			return fmt.Errorf("error loading note %s: %w", path, err)
 		}
 
 		notes = append(notes, note)
-		s.notesDictionary[note.Name] = note
 		return nil
 	})
 
@@ -239,13 +256,23 @@ func (s *Store) LoadNotes() ([]Note, error) {
 		return 0
 	})
 
+	return notes, nil
+}
+
+// SetNotes replaces the notes in the store, keeping the current note
+// if it still exists or falling back to the most recently updated one.
+func (s *Store) SetNotes(notes []Note) {
+	clear(s.notesDictionary)
+	for _, note := range notes {
+		s.notesDictionary[note.Name] = note
+	}
+
 	s.notes = notes
 
 	if len(notes) > 0 {
-		s.currentNoteName = utils.Ternary(s.currentNoteName == "", notes[0].Name, s.currentNoteName)
+		_, exists := s.notesDictionary[s.currentNoteName]
+		s.currentNoteName = utils.Ternary(exists, s.currentNoteName, notes[0].Name)
 	}
-
-	return notes, nil
 }
 
 // used to determine if the note was updated externally
@@ -338,6 +365,12 @@ func (s Store) generateUniqueName(name string) string {
 // 		return time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec)), nil
 // 	}
 // }
+
+// isNoteFile reports whether a file name is a note, excluding
+// lock files that editors such as Emacs create next to the note.
+func isNoteFile(name string) bool {
+	return strings.HasSuffix(name, ".md") && !strings.HasPrefix(name, ".#")
+}
 
 func (s *Store) loadNoteFromFile(path string) (Note, error) {
 	data, err := os.ReadFile(path)
