@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/ionut-t/notes/compare/v1.2.0...v1.3.0) (2026-10-19)
+
+
+### Features
+
+* **watcher:** automatically reload notes on external changes ([#8](https://github.com/ionut-t/notes/issues/8)) ([3a5c3bd](https://github.com/ionut-t/notes/commit/3a5c3bd88882207553a92e071aca7ab70c8b038d))
+
 ## [1.2.0](https://github.com/ionut-t/notes/compare/v1.1.0...v1.2.0) (2026-09-02)
 
 
