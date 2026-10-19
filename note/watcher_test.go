@@ -136,3 +136,49 @@ func TestStore_ReadNotes_DoesNotModifyStore(t *testing.T) {
 	store.SetNotes(notes)
 	assert.Len(t, store.GetNotes(), 2)
 }
+
+func TestWatcher_NotifiesOnSaveViaTemporaryFile(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	path := store.GetNotePath("note")
+	require.NoError(t, os.WriteFile(path, []byte("v1"), 0644))
+
+	w := startWatcher(t, store)
+
+	for _, tmp := range []string{"note.md~", "note.md.tmp", ".note.md.swp"} {
+		tmpPath := filepath.Join(store.storage, tmp)
+		require.NoError(t, os.WriteFile(tmpPath, []byte("v2"), 0644))
+		require.NoError(t, os.Rename(tmpPath, path))
+		waitForChange(t, w)
+	}
+}
+
+func TestWatcher_IgnoresEditorLockFiles(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	w := startWatcher(t, store)
+
+	require.NoError(t, os.Symlink("user@host.1:1", filepath.Join(store.storage, ".#note.md")))
+
+	select {
+	case <-w.Changes():
+		t.Fatal("expected no notification for editor lock files")
+	case <-time.After(3 * watcherDebounce):
+	}
+}
+
+func TestStore_ReadNotes_SkipsLockAndDanglingFiles(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	require.NoError(t, os.WriteFile(store.GetNotePath("note"), []byte("1"), 0644))
+	require.NoError(t, os.Symlink("user@host.1:1", filepath.Join(store.storage, ".#note.md")))
+	require.NoError(t, os.Symlink("missing", filepath.Join(store.storage, "dangling.md")))
+
+	notes, err := store.ReadNotes()
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, "note", notes[0].Name)
+}

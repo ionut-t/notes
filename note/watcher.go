@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -134,8 +133,11 @@ func (w *Watcher) addRecursive(root string) error {
 	})
 }
 
-// isRelevantEvent ignores editor swap/backup files and attribute-only changes.
-// Removes and renames are always relevant since they may affect a directory.
+// isRelevantEvent ignores files that aren't notes, such as editor swap, backup
+// and temporary files, and attribute-only changes. Removes and renames are
+// always relevant since they may affect a directory. Saves that write a
+// temporary file and rename it over the note are still caught by the Create
+// event for the note itself.
 func isRelevantEvent(event fsnotify.Event) bool {
 	if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
 		return true
@@ -145,5 +147,5 @@ func isRelevantEvent(event fsnotify.Event) bool {
 		return false
 	}
 
-	return strings.HasSuffix(event.Name, ".md")
+	return isNoteFile(filepath.Base(event.Name))
 }

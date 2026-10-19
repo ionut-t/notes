@@ -221,13 +221,18 @@ func (s *Store) ReadNotes() ([]Note, error) {
 			return err
 		}
 
-		// Skip directories and non-markdown files
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+		// Skip directories and non-note files
+		if d.IsDir() || !isNoteFile(d.Name()) {
 			return nil
 		}
 
 		note, err := s.loadNoteFromFile(path)
 		if err != nil {
+			// deleted while walking, or a dangling symlink
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+
 			return fmt.Errorf("error loading note %s: %w", path, err)
 		}
 
@@ -360,6 +365,12 @@ func (s Store) generateUniqueName(name string) string {
 // 		return time.Unix(int64(stat.Ctimespec.Sec), int64(stat.Ctimespec.Nsec)), nil
 // 	}
 // }
+
+// isNoteFile reports whether a file name is a note, excluding
+// lock files that editors such as Emacs create next to the note.
+func isNoteFile(name string) bool {
+	return strings.HasSuffix(name, ".md") && !strings.HasPrefix(name, ".#")
+}
 
 func (s *Store) loadNoteFromFile(path string) (Note, error) {
 	data, err := os.ReadFile(path)
