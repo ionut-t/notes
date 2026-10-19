@@ -25,6 +25,8 @@ type cmdNoteDeletedMsg struct{}
 
 type noteAddedMsg struct{}
 
+type notesChangedMsg struct{}
+
 type changesDiscardedMsg struct{}
 
 func dispatch(msg tea.Msg) tea.Cmd {

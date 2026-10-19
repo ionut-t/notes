@@ -1,0 +1,117 @@
+package note
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func waitForChange(t *testing.T, w *Watcher) {
+	t.Helper()
+
+	select {
+	case <-w.Changes():
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected a change notification")
+	}
+}
+
+func TestWatcher_NotifiesOnExternalChanges(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	w, err := store.Watch()
+	require.NoError(t, err)
+	defer w.Close()
+
+	path := filepath.Join(store.storage, "external.md")
+
+	require.NoError(t, os.WriteFile(path, []byte("hello"), 0644))
+	waitForChange(t, w)
+
+	require.NoError(t, os.WriteFile(path, []byte("hello again"), 0644))
+	waitForChange(t, w)
+
+	require.NoError(t, os.Remove(path))
+	waitForChange(t, w)
+}
+
+func TestWatcher_DebouncesBursts(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	w, err := store.Watch()
+	require.NoError(t, err)
+	defer w.Close()
+
+	for i := range 5 {
+		path := filepath.Join(store.storage, "note"+string(rune('a'+i))+".md")
+		require.NoError(t, os.WriteFile(path, []byte("x"), 0644))
+	}
+
+	waitForChange(t, w)
+
+	select {
+	case <-w.Changes():
+		t.Fatal("expected a single notification for a burst of changes")
+	case <-time.After(3 * watcherDebounce):
+	}
+}
+
+func TestWatcher_IgnoresNonMarkdownFiles(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	w, err := store.Watch()
+	require.NoError(t, err)
+	defer w.Close()
+
+	require.NoError(t, os.WriteFile(filepath.Join(store.storage, ".note.md.swp"), []byte("x"), 0644))
+
+	select {
+	case <-w.Changes():
+		t.Fatal("expected no notification for non-markdown files")
+	case <-time.After(3 * watcherDebounce):
+	}
+}
+
+func TestWatcher_WatchesNewSubdirectories(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	w, err := store.Watch()
+	require.NoError(t, err)
+	defer w.Close()
+
+	dir := filepath.Join(store.storage, "nested")
+	require.NoError(t, os.Mkdir(dir, 0755))
+	waitForChange(t, w)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "deep.md"), []byte("x"), 0644))
+	waitForChange(t, w)
+}
+
+func TestStore_LoadNotes_DropsExternallyDeletedNotes(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	require.NoError(t, store.Create("first", "1"))
+	require.NoError(t, store.Create("second", "2"))
+	_, err := store.LoadNotes()
+	require.NoError(t, err)
+
+	store.SetCurrentNoteName("second")
+	require.NoError(t, os.Remove(store.GetNotePath("second")))
+
+	notes, err := store.LoadNotes()
+	require.NoError(t, err)
+	assert.Len(t, notes, 1)
+
+	current, ok := store.GetCurrentNote()
+	assert.True(t, ok)
+	assert.Equal(t, "first", current.Name)
+}

@@ -13,7 +13,10 @@ func runManagerUI(store *note.Store) {
 	m := ui.NewManager(store)
 	p := tea.NewProgram(m)
 
-	if _, err := p.Run(); err != nil {
+	_, err := p.Run()
+	_ = m.Close()
+
+	if err != nil {
 		fmt.Printf("Error running UI: %v\n", err)
 		os.Exit(1)
 	}

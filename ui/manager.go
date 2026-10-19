@@ -55,6 +55,7 @@ type ManagerModel struct {
 	width, height  int
 	successMessage string
 	addNote        AddModel
+	watcher        *note.Watcher
 }
 
 func NewManager(store *note.Store) *ManagerModel {
@@ -75,6 +76,12 @@ func NewManager(store *note.Store) *ManagerModel {
 		help:     help.New(),
 		noteView: NewNoteModel(store, 100, 20),
 		error:    err,
+	}
+
+	if watcher, watchErr := store.Watch(); watchErr == nil {
+		m.watcher = watcher
+	} else if m.error == nil {
+		m.error = fmt.Errorf("failed to watch notes directory: %w", watchErr)
 	}
 
 	m.list.Title = "Notes"
@@ -117,7 +124,16 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 func (m *ManagerModel) Init() tea.Cmd {
-	return nil
+	return m.waitForNotesChange()
+}
+
+// Close stops watching the notes directory.
+func (m *ManagerModel) Close() error {
+	if m.watcher == nil {
+		return nil
+	}
+
+	return m.watcher.Close()
 }
 
 func (m *ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -136,6 +152,9 @@ func (m *ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case noteAddedMsg:
 		return m.handleEditorClose(true)
+
+	case notesChangedMsg:
+		return m, tea.Batch(m.reloadNotes(), m.waitForNotesChange())
 
 	case cmdNoteDeletedMsg:
 		m.list.RemoveItem(m.list.Index())
@@ -506,6 +525,52 @@ func (m *ManagerModel) handleEditorClose(isNew bool) (*ManagerModel, tea.Cmd) {
 		m.dispatchWindowSizeMsg(),
 		// tea.EnableMouseCellMotion,
 	)
+}
+
+func (m *ManagerModel) waitForNotesChange() tea.Cmd {
+	if m.watcher == nil {
+		return nil
+	}
+
+	changes := m.watcher.Changes()
+
+	return func() tea.Msg {
+		<-changes
+		return notesChangedMsg{}
+	}
+}
+
+// reloadNotes re-reads the notes from disk, keeping the selected note
+// and any active filter when possible.
+func (m *ManagerModel) reloadNotes() tea.Cmd {
+	notes, err := m.store.LoadNotes()
+	if err != nil {
+		return dispatch(cmdErrorMsg(err))
+	}
+
+	cmds := []tea.Cmd{m.list.SetItems(processNotes(notes))}
+
+	if m.list.FilterState() == list.Unfiltered {
+		m.list.ResetSelected()
+
+		if current, ok := m.store.GetCurrentNote(); ok {
+			for i, listItem := range m.list.Items() {
+				if listItem.(item).title == current.Name {
+					m.list.Select(i)
+					break
+				}
+			}
+		}
+	}
+
+	if !m.noteView.reloadContent() {
+		m.error = fmt.Errorf("note changed on disk; save to overwrite or discard your changes to reload")
+		cmds = append(cmds, dispatchClearMsg())
+	}
+
+	cmds = append(cmds, m.dispatchWindowSizeMsg())
+
+	return tea.Batch(cmds...)
 }
 
 func (m *ManagerModel) handleQuit() (*ManagerModel, tea.Cmd) {

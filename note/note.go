@@ -198,6 +198,7 @@ func (s Store) RenameNote(currentName, newName string) (Note, error) {
 
 func (s *Store) LoadNotes() ([]Note, error) {
 	notes := []Note{}
+	clear(s.notesDictionary)
 
 	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -242,7 +243,8 @@ func (s *Store) LoadNotes() ([]Note, error) {
 	s.notes = notes
 
 	if len(notes) > 0 {
-		s.currentNoteName = utils.Ternary(s.currentNoteName == "", notes[0].Name, s.currentNoteName)
+		_, exists := s.notesDictionary[s.currentNoteName]
+		s.currentNoteName = utils.Ternary(exists, s.currentNoteName, notes[0].Name)
 	}
 
 	return notes, nil
