@@ -227,7 +227,13 @@ func (m *NoteModel) reloadContent() bool {
 	lines := strings.Split(note.Content, "\n")
 	row := min(position.Row, len(lines)-1)
 	col := min(position.Col, utf8.RuneCountInString(lines[row]))
-	_ = m.editor.SetCursorPosition(row, col)
+
+	// an empty buffer has no cursor position to restore
+	if note.Content != "" {
+		if err := m.editor.SetCursorPosition(row, col); err != nil {
+			m.error = fmt.Errorf("failed to set cursor position: %w", err)
+		}
+	}
 
 	m.updateContent()
 	return true

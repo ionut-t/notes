@@ -2,6 +2,7 @@ package note
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ const watcherDebounce = 200 * time.Millisecond
 type Watcher struct {
 	fsWatcher *fsnotify.Watcher
 	changes   chan struct{}
+	errors    chan error
 	done      chan struct{}
 }
 
@@ -35,6 +37,7 @@ func (s *Store) Watch() (*Watcher, error) {
 		fsWatcher: fsWatcher,
 		// buffered so that a pending notification is kept while the UI is busy
 		changes: make(chan struct{}, 1),
+		errors:  make(chan error, 1),
 		done:    make(chan struct{}),
 	}
 
@@ -50,6 +53,12 @@ func (s *Store) Watch() (*Watcher, error) {
 // Changes emits once per burst of file system events.
 func (w *Watcher) Changes() <-chan struct{} {
 	return w.changes
+}
+
+// Errors emits failures that may cause changes to be missed, such as
+// hitting the OS limit of watched directories.
+func (w *Watcher) Errors() <-chan error {
+	return w.errors
 }
 
 func (w *Watcher) Close() error {
@@ -74,7 +83,9 @@ func (w *Watcher) run() {
 
 			if event.Has(fsnotify.Create) {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					_ = w.addRecursive(event.Name)
+					if err := w.addRecursive(event.Name); err != nil {
+						w.reportError(fmt.Errorf("failed to watch %s: %w", event.Name, err))
+					}
 					timer.Reset(watcherDebounce)
 					continue
 				}
@@ -84,10 +95,12 @@ func (w *Watcher) run() {
 				timer.Reset(watcherDebounce)
 			}
 
-		case _, ok := <-w.fsWatcher.Errors:
+		case err, ok := <-w.fsWatcher.Errors:
 			if !ok {
 				return
 			}
+
+			w.reportError(err)
 
 		case <-timer.C:
 			select {
@@ -95,6 +108,15 @@ func (w *Watcher) run() {
 			default:
 			}
 		}
+	}
+}
+
+// reportError drops the error if one is already pending, so a burst of
+// errors never blocks the event loop.
+func (w *Watcher) reportError(err error) {
+	select {
+	case w.errors <- err:
+	default:
 	}
 }
 

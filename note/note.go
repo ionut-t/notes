@@ -197,8 +197,20 @@ func (s Store) RenameNote(currentName, newName string) (Note, error) {
 }
 
 func (s *Store) LoadNotes() ([]Note, error) {
+	notes, err := s.ReadNotes()
+	if err != nil {
+		return nil, err
+	}
+
+	s.SetNotes(notes)
+
+	return s.notes, nil
+}
+
+// ReadNotes reads the notes from disk sorted by last update, without
+// modifying the store, so it's safe to call outside the UI goroutine.
+func (s *Store) ReadNotes() ([]Note, error) {
 	notes := []Note{}
-	clear(s.notesDictionary)
 
 	err := filepath.WalkDir(s.storage, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -220,7 +232,6 @@ func (s *Store) LoadNotes() ([]Note, error) {
 		}
 
 		notes = append(notes, note)
-		s.notesDictionary[note.Name] = note
 		return nil
 	})
 
@@ -240,14 +251,23 @@ func (s *Store) LoadNotes() ([]Note, error) {
 		return 0
 	})
 
+	return notes, nil
+}
+
+// SetNotes replaces the notes in the store, keeping the current note
+// if it still exists or falling back to the most recently updated one.
+func (s *Store) SetNotes(notes []Note) {
+	clear(s.notesDictionary)
+	for _, note := range notes {
+		s.notesDictionary[note.Name] = note
+	}
+
 	s.notes = notes
 
 	if len(notes) > 0 {
 		_, exists := s.notesDictionary[s.currentNoteName]
 		s.currentNoteName = utils.Ternary(exists, s.currentNoteName, notes[0].Name)
 	}
-
-	return notes, nil
 }
 
 // used to determine if the note was updated externally

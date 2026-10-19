@@ -117,3 +117,22 @@ func TestStore_LoadNotes_DropsExternallyDeletedNotes(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "first", current.Name)
 }
+
+func TestStore_ReadNotes_DoesNotModifyStore(t *testing.T) {
+	t.Parallel()
+	store := setupTestStore(t)
+
+	require.NoError(t, store.Create("first", "1"))
+	_, err := store.LoadNotes()
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(store.GetNotePath("second"), []byte("2"), 0644))
+
+	notes, err := store.ReadNotes()
+	require.NoError(t, err)
+	assert.Len(t, notes, 2)
+	assert.Len(t, store.GetNotes(), 1)
+
+	store.SetNotes(notes)
+	assert.Len(t, store.GetNotes(), 2)
+}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -13,10 +14,9 @@ func runManagerUI(store *note.Store) {
 	m := ui.NewManager(store)
 	p := tea.NewProgram(m)
 
-	_, err := p.Run()
-	_ = m.Close()
+	_, runErr := p.Run()
 
-	if err != nil {
+	if err := errors.Join(runErr, m.Close()); err != nil {
 		fmt.Printf("Error running UI: %v\n", err)
 		os.Exit(1)
 	}

@@ -154,7 +154,18 @@ func (m *ManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleEditorClose(true)
 
 	case notesChangedMsg:
-		return m, tea.Batch(m.reloadNotes(), m.waitForNotesChange())
+		return m, m.loadNotes()
+
+	case notesLoadedMsg:
+		// only wait for the next change once this one is applied, so that
+		// loads never overlap and a stale result can't overwrite a newer one
+		return m, tea.Batch(m.applyLoadedNotes(msg), m.waitForNotesChange())
+
+	case watcherErrorMsg:
+		return m, tea.Batch(
+			dispatch(cmdErrorMsg(fmt.Errorf("watching notes for changes: %w", msg.err))),
+			m.waitForNotesChange(),
+		)
 
 	case cmdNoteDeletedMsg:
 		m.list.RemoveItem(m.list.Index())
@@ -532,23 +543,38 @@ func (m *ManagerModel) waitForNotesChange() tea.Cmd {
 		return nil
 	}
 
-	changes := m.watcher.Changes()
+	changes, errs := m.watcher.Changes(), m.watcher.Errors()
 
 	return func() tea.Msg {
-		<-changes
-		return notesChangedMsg{}
+		select {
+		case <-changes:
+			return notesChangedMsg{}
+		case err := <-errs:
+			return watcherErrorMsg{err}
+		}
 	}
 }
 
-// reloadNotes re-reads the notes from disk, keeping the selected note
-// and any active filter when possible.
-func (m *ManagerModel) reloadNotes() tea.Cmd {
-	notes, err := m.store.LoadNotes()
-	if err != nil {
-		return dispatch(cmdErrorMsg(err))
+// loadNotes reads the notes from disk outside the update loop.
+func (m *ManagerModel) loadNotes() tea.Cmd {
+	store := m.store
+
+	return func() tea.Msg {
+		notes, err := store.ReadNotes()
+		return notesLoadedMsg{notes: notes, err: err}
+	}
+}
+
+// applyLoadedNotes updates the list with the notes read from disk, keeping
+// the selected note and any active filter when possible.
+func (m *ManagerModel) applyLoadedNotes(msg notesLoadedMsg) tea.Cmd {
+	if msg.err != nil {
+		return dispatch(cmdErrorMsg(msg.err))
 	}
 
-	cmds := []tea.Cmd{m.list.SetItems(processNotes(notes))}
+	m.store.SetNotes(msg.notes)
+
+	cmds := []tea.Cmd{m.list.SetItems(processNotes(msg.notes))}
 
 	if m.list.FilterState() == list.Unfiltered {
 		m.list.ResetSelected()
