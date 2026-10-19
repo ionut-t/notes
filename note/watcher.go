@@ -1,6 +1,7 @@
 package note
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -38,8 +39,7 @@ func (s *Store) Watch() (*Watcher, error) {
 	}
 
 	if err := w.addRecursive(s.storage); err != nil {
-		fsWatcher.Close()
-		return nil, err
+		return nil, errors.Join(err, fsWatcher.Close())
 	}
 
 	go w.run()

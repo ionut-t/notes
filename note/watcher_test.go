@@ -10,6 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func startWatcher(t *testing.T, store *Store) *Watcher {
+	t.Helper()
+
+	w, err := store.Watch()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, w.Close()) })
+
+	return w
+}
+
 func waitForChange(t *testing.T, w *Watcher) {
 	t.Helper()
 
@@ -24,9 +34,7 @@ func TestWatcher_NotifiesOnExternalChanges(t *testing.T) {
 	t.Parallel()
 	store := setupTestStore(t)
 
-	w, err := store.Watch()
-	require.NoError(t, err)
-	defer w.Close()
+	w := startWatcher(t, store)
 
 	path := filepath.Join(store.storage, "external.md")
 
@@ -44,9 +52,7 @@ func TestWatcher_DebouncesBursts(t *testing.T) {
 	t.Parallel()
 	store := setupTestStore(t)
 
-	w, err := store.Watch()
-	require.NoError(t, err)
-	defer w.Close()
+	w := startWatcher(t, store)
 
 	for i := range 5 {
 		path := filepath.Join(store.storage, "note"+string(rune('a'+i))+".md")
@@ -66,9 +72,7 @@ func TestWatcher_IgnoresNonMarkdownFiles(t *testing.T) {
 	t.Parallel()
 	store := setupTestStore(t)
 
-	w, err := store.Watch()
-	require.NoError(t, err)
-	defer w.Close()
+	w := startWatcher(t, store)
 
 	require.NoError(t, os.WriteFile(filepath.Join(store.storage, ".note.md.swp"), []byte("x"), 0644))
 
@@ -83,9 +87,7 @@ func TestWatcher_WatchesNewSubdirectories(t *testing.T) {
 	t.Parallel()
 	store := setupTestStore(t)
 
-	w, err := store.Watch()
-	require.NoError(t, err)
-	defer w.Close()
+	w := startWatcher(t, store)
 
 	dir := filepath.Join(store.storage, "nested")
 	require.NoError(t, os.Mkdir(dir, 0755))
